@@ -6,4 +6,4 @@ target_include_directories(cache_scope
     ${PROJECT_SOURCE_DIR}/include/CLI/include/CLI
 )
 
-target_link_libraries(cache_scope cxxopts)
+target_link_libraries(cache_scope CLI)
