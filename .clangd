@@ -1,5 +1,11 @@
 CompileFlags:
-  Add: [-std=c++20]
-  Remove: [-stdlib=libc++]
-Diagnostics:
-  MissingIncludes: true
+  Add:
+    - -std=c++20
+    - -Wall
+    - -Wextra
+    - -Wpedantic
+    # Include your project headers
+    - -I${workspaceFolder}/src
+    - -I${workspaceFolder}/include
+    # Include cxxopts (header-only submodule)
+    - -I${workspaceFolder}/include/cxxopts/include
