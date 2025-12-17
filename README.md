@@ -22,13 +22,17 @@ CacheScope fills this gap, giving developers actionable insights to optimize cac
 
 ---
 
-## **Features**
+## **Features Needed to Add**
 
 - **Clang-based struct layout extraction**: Automatically analyze C++ struct and class memory layouts.  
 - **Per-thread memory access tracing**: Instrument your code to log read/write access patterns.  
 - **Cache line simulation**: Map memory addresses to CPU cache lines, detect conflicts, and highlight false sharing.  
 - **Visualization-ready output**: Export JSON/CSV reports suitable for heatmaps, timelines, or custom visualizations.  
 - **Multi-thread support**: Analyze programs using multiple threads and identify cross-thread conflicts.
+
+---
+## **Features Added**
+
 
 ---
 
