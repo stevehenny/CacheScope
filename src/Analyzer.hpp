@@ -1,8 +1,15 @@
+#include <any>
 #include <ostream>
 #include <string>
 #include <unordered_map>
 
-using std::string, std::ostream, std::unordered_map;
+using std::string, std::ostream, std::unordered_map, std::any;
+
+struct AnalyzerStruct {
+  string structName;
+  any structType;
+};
+
 class Analyzer {
   public:
   Analyzer();
@@ -13,4 +20,5 @@ class Analyzer {
 
   private:
   ostream report;
+  unordered_map<string, AnalyzerStruct> structMap;
 };
