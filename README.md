@@ -2,8 +2,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)  
 [![C++ Version](https://img.shields.io/badge/C%2B%2B-20-blue.svg?style=flat-square)](https://isocpp.org/)  
-[![Issues](https://img.shields.io/github/issues/yourusername/CacheScope?style=flat-square)](https://github.com/stevehenny/CacheScope/issues)  
-[![Stars](https://img.shields.io/github/stars/yourusername/CacheScope?style=flat-square)](https://github.com/stevehenny/CacheScope/stargazers)  
+[![Issues](https://img.shields.io/github/issues/stevehenny/CacheScope?style=flat-square)](https://github.com/stevehenny/CacheScope/issues)  
+[![Stars](https://img.shields.io/github/stars/stevehenny/CacheScope?style=flat-square)](https://github.com/stevehenny/CacheScope/stargazers)  
 
 **CacheScope** is a visualization and analysis tool for cache line bouncing and false sharing in multithreaded C++ programs.  
 It helps developers identify performance-critical areas where threads contend on the same cache lines, enabling optimization of data structures and memory access patterns.
