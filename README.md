@@ -14,10 +14,13 @@ It helps developers identify performance-critical areas where threads contend on
 Install the following:
 
 // on Arch
-`sudo pacman -S elfutils libdwarf`
+`sudo pacman -S cli11 libdwarf libelf`
 
 // on Ubuntu/Debian
-`sudo apt install libdwarf-dev libelf-dev`
+`sudo apt install libcli11-dev libdwarf-dev libelf-dev`
+
+// Fedora
+`sudo dnf install cli11-devel libdwarf-devel elfutils-libelf-devel`
 
 ---
 
