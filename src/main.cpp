@@ -1,7 +1,11 @@
 #include <CLI.hpp>
 #include <string>
+
+#include "CLI/CLI.hpp"
+#include "extractor.hpp"
 int main(int argc, char* argv[]) {
-  CLI::App app("", "cache_scope");
+  CLI::App app("CacheScope: Analyze and visualize CPU cache behavior",
+               "cache_scope");
 
   app.require_subcommand(1);
 
@@ -17,7 +21,8 @@ int main(int argc, char* argv[]) {
     ->check(CLI::ExistingFile);
 
   analyze->callback([&]() {
-    // TODO: Add analyze callback here
+    Extractor ext{binary};
+    ext.create_registry();
   });
 
   std::string trace_file;
@@ -29,5 +34,6 @@ int main(int argc, char* argv[]) {
     // TODO: Add visualize callback here
   });
 
+  CLI11_PARSE(app, argc, argv);
   return 0;
 }

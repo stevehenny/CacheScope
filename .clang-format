@@ -1,7 +1,6 @@
----
-Language:        Cpp
-BasedOnStyle:  Google
-AccessModifierOffset: 0
+Language: Cpp
+BasedOnStyle: Google
+AccessModifierOffset: -2
 AlignConsecutiveAssignments: true
 ConstructorInitializerIndentWidth: 2
 ContinuationIndentWidth: 2

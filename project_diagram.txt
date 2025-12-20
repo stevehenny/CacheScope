@@ -1,0 +1,42 @@
+                 ┌───────────────────┐
+                 │   User Input      │
+                 │  (binary, options)│
+                 └─────────┬─────────┘
+                           │
+             ┌─────────────┴─────────────┐
+             │                           │
+      ┌───────────────┐           ┌───────────────┐
+      │Static Analyzer│           │Dynamic Analyzer│
+      │(DWARF / ELF)  │           │(Memory Tracer) │
+      └───────────────┘           └───────────────┘
+             │                           │
+             │                           │
+             │                           │
+  ┌──────────┴───────────┐   ┌───────────┴───────────┐
+  │  StructRegistry      │   │ Runtime Memory Trace  │
+  │  - Structs/Classes   │   │  - Address / Thread / │
+  │  - Field offsets     │   │    Instruction info   │
+  │  - Field sizes       │   │  - Load / Store ops   │
+  │  - Padding info      │   │                       │
+  └──────────┬───────────┘   └───────────┬───────────┘
+             │                           │
+             └─────────────┬─────────────┘
+                           │
+                  ┌────────┴────────┐
+                  │  Analyzer Core  │
+                  │ - Map memory    │
+                  │    addresses →  │
+                  │    struct fields│
+                  │ - Detect        │
+                  │    false sharing│
+                  │ - Hot/cold field│
+                  │ - Padding ineff │
+                  └────────┬────────┘
+                           │
+                   ┌───────┴─────────┐
+                   │  Report / Output│
+                   │  - Text or JSON │
+                   │  - Heatmaps     │
+                   │  - Cache Line   │
+                   │   visualizations│
+                   └─────────────────┘

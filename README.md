@@ -8,6 +8,17 @@
 **CacheScope** is a visualization and analysis tool for cache line bouncing and false sharing in multithreaded C++ programs.  
 It helps developers identify performance-critical areas where threads contend on the same cache lines, enabling optimization of data structures and memory access patterns.
 
+
+##Dependencies
+
+Install the following:
+
+// on Arch
+`sudo pacman -S elfutils libdwarf`
+
+// on Ubuntu/Debian
+`sudo apt install libdwarf-dev libelf-dev`
+
 ---
 
 ## **Motivation**
