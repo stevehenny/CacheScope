@@ -1,4 +1,4 @@
-#include <CLI.hpp>
+#include <CLI/CLI.hpp>
 #include <string>
 
 #include "CLI/CLI.hpp"

@@ -1,3 +1,4 @@
+
 #include "extractor.hpp"
 
 #include <fcntl.h>
@@ -6,23 +7,19 @@
 #include <libelf.h>
 #include <unistd.h>
 
-#include <iostream>
-#include <sstream>
-#include <stdexcept>
+#include "DwarfContext.hpp"
 
-Extractor::Extractor(const string& bin) {
-  bin_fd = open(bin.c_str(), O_RDONLY);
-  if (bin_fd < 0) throw std::runtime_error("ERROR: Failed to open file\n");
-}
+Extractor::Extractor(const string& bin) : context(DwarfContext{bin}) {}
 
-Extractor::~Extractor() { close(bin_fd); }
+Extractor::~Extractor() = default;
 
 void Extractor::create_registry() {
-  Dwarf_Debug dbg = nullptr;
-  Dwarf_Error err;
+  Dwarf_Debug dbg = context.dbg();
 
-  if (dwarf_init_b(bin_fd, DW_GROUPNUMBER_ANY, nullptr, nullptr, &dbg, &err))
-    ;
+  // Next steps go here:
+  // - iterate compilation units
+  // - traverse DIE tree
+  // - extract structs and create registry
 }
 
 const StructRegistry& Extractor::get_registry() const { return registry; }

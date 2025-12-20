@@ -1,1 +1,1 @@
-add_library(static_analysis extractor.cpp registry.cpp)
+add_library(static_analysis extractor.cpp registry.cpp DwarfContext.cpp)

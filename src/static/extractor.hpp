@@ -1,6 +1,10 @@
-#include <cstdio>
+#pragma once
+
+#include <libdwarf-2/libdwarf.h>
+
 #include <string>
 
+#include "DwarfContext.hpp"
 #include "registry.hpp"
 
 using std::string;
@@ -15,4 +19,5 @@ public:
 private:
   int bin_fd;
   StructRegistry registry;
+  DwarfContext context;
 };
