@@ -11,7 +11,8 @@ using std::string, std::string_view, std::vector, std::unordered_map;
 class StructRegistry {
 public:
   void register_struct(StructSchema schema);
-  const StructSchema* lookup(string_view name) const;
+  StructSchema& lookup(const string& name);
+  const unordered_map<string, StructSchema>& get_map() const;
 
 private:
   unordered_map<string, StructSchema> _schemas;

@@ -14,6 +14,8 @@ public:
   Extractor(const string& bin);
   ~Extractor();
   void create_registry();
+  void process_die_tree(Dwarf_Die cu_die);
+  void process_die(Dwarf_Die cu_die);
   const StructRegistry& get_registry() const;
 
 private:

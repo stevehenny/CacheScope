@@ -2,6 +2,13 @@
 
 #include "schema.hpp"
 
-void StructRegistry::register_struct(StructSchema schema) {}
+void StructRegistry::register_struct(StructSchema schema) {
+  this->_schemas[schema.name] = schema;
+}
 
-const StructSchema* StructRegistry::lookup(string_view name) const {}
+StructSchema& StructRegistry::lookup(const string& name) {
+  return this->_schemas[name];
+}
+const unordered_map<string, StructSchema>& StructRegistry::get_map() const {
+  return _schemas;
+}
