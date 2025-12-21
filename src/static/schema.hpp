@@ -20,3 +20,9 @@ struct StructSchema {
   size_t size;
   vector<FieldInfo> fields;
 };
+
+struct Test {
+  string test1;
+  size_t test2;
+  char test3;
+};

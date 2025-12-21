@@ -3,6 +3,7 @@
 
 #include "CLI/CLI.hpp"
 #include "extractor.hpp"
+#include "schema.hpp"
 int main(int argc, char* argv[]) {
   CLI::App app("CacheScope: Analyze and visualize CPU cache behavior",
                "cache_scope");
@@ -22,12 +23,14 @@ int main(int argc, char* argv[]) {
 
   analyze->callback([&]() {
     Extractor ext{binary};
+    Test test;
     ext.create_registry();
     for (const auto& [k, v] : ext.get_registry().get_map()) {
       std::cout << k << ": " << v.size << '\n';
       std::cout << "Fields:" << '\n';
       for (const auto& field : v.fields) {
-        std::cout << field.name << '\n';
+        std::cout << field.name << "->" << field.type_name << ": " << field.size
+                  << "->Offset: " << field.offset << '\n';
       }
     }
   });
