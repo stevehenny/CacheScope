@@ -6,6 +6,7 @@ target_include_directories(cache_scope
   PRIVATE
     ${PROJECT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/src/static
+    ${PROJECT_SOURCE_DIR}/src/dynamic
 )
 
 target_link_libraries(cache_scope

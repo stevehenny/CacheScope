@@ -16,10 +16,10 @@ public:
   void create_registry();
   void process_die_tree(Dwarf_Die cu_die);
   void process_die(Dwarf_Die cu_die);
-  const StructRegistry& get_registry() const;
+  const Registry<string, StructSchema>& get_registry() const;
 
 private:
   int bin_fd;
-  StructRegistry registry;
+  Registry<string, StructSchema> registry;
   DwarfContext context;
 };

@@ -6,7 +6,6 @@
 #include <libelf.h>
 #include <unistd.h>
 
-#include <iostream>
 #include <stdexcept>
 
 #include "DwarfContext.hpp"
@@ -58,8 +57,8 @@ static Dwarf_Die unwrap_type(Dwarf_Debug dbg, Dwarf_Die die) {
 }
 
 /* ------------------------- Extractor ------------------------- */
-
 Extractor::Extractor(const string& bin) : context(DwarfContext{bin}) {}
+
 Extractor::~Extractor() = default;
 
 void Extractor::create_registry() {
@@ -134,7 +133,7 @@ void Extractor::process_die(Dwarf_Die die) {
   Dwarf_Error err = nullptr;
 
   if (dwarf_child(die, &child, &err) != DW_DLV_OK) {
-    registry.register_struct(schema);
+    registry.register_struct(schema.name, schema);
     return;
   }
 
@@ -193,7 +192,9 @@ void Extractor::process_die(Dwarf_Die die) {
     cur = sibling;
   }
 
-  registry.register_struct(schema);
+  registry.register_struct(schema.name, schema);
 }
 
-const StructRegistry& Extractor::get_registry() const { return registry; }
+const Registry<string, StructSchema>& Extractor::get_registry() const {
+  return registry;
+}

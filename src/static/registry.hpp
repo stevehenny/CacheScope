@@ -8,12 +8,19 @@
 
 using std::string, std::string_view, std::vector, std::unordered_map;
 
-class StructRegistry {
+template <typename K, typename V>
+class Registry {
 public:
-  void register_struct(StructSchema schema);
-  StructSchema& lookup(const string& name);
-  const unordered_map<string, StructSchema>& get_map() const;
+  void register_struct(K key, V entry) { this->_entries[key] = entry; }
+  V& lookup(const K& key) {
+    auto it = _entries.find(key);
+    if (it == _entries.end()) {
+      return nullptr;
+    }
+    return it->second;
+  }
+  const unordered_map<K, V>& get_map() const { return _entries; }
 
 private:
-  unordered_map<string, StructSchema> _schemas;
+  unordered_map<K, V> _entries;
 };
