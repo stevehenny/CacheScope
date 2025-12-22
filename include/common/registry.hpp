@@ -4,8 +4,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "schema.hpp"
-
 using std::string, std::string_view, std::vector, std::unordered_map;
 
 template <typename K, typename V>

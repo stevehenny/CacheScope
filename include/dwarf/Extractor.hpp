@@ -5,7 +5,8 @@
 #include <string>
 
 #include "DwarfContext.hpp"
-#include "registry.hpp"
+#include "common/Types.hpp"
+#include "common/registry.hpp"
 
 using std::string;
 

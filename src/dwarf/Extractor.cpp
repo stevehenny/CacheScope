@@ -1,4 +1,5 @@
-#include "extractor.hpp"
+
+#include "dwarf/Extractor.hpp"
 
 #include <fcntl.h>
 #include <libdwarf-2/dwarf.h>
@@ -8,8 +9,8 @@
 
 #include <stdexcept>
 
-#include "DwarfContext.hpp"
-#include "schema.hpp"
+#include "common/Types.hpp"
+#include "dwarf/DwarfContext.hpp"
 
 /* ------------------------- Helpers ------------------------- */
 

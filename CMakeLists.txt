@@ -13,4 +13,14 @@ find_package(CLI11 CONFIG REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBDW REQUIRED libdwarf libelf)
 
+
+
+add_library(cache_scope_includes INTERFACE)
+
+target_include_directories(cache_scope_includes
+  INTERFACE
+    ${PROJECT_SOURCE_DIR}/include
+)
+
+
 add_subdirectory(src)
