@@ -11,14 +11,13 @@ struct AnalyzerStruct {
 };
 
 class Analyzer {
-  public:
+public:
   Analyzer();
   ~Analyzer();
 
   void analyze_bin(string bin);
   ostream get_report();
 
-  private:
-  ostream report;
+private:
   unordered_map<string, AnalyzerStruct> structMap;
 };
