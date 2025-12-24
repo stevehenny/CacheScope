@@ -2,25 +2,28 @@
 
 #include <libdwarf-2/libdwarf.h>
 
+#include <memory>
 #include <string>
 
 #include "DwarfContext.hpp"
 #include "common/Registry.hpp"
 #include "common/Types.hpp"
-
 using std::string;
 
 class Extractor {
 public:
-  Extractor(const string& bin);
-  ~Extractor();
+  explicit Extractor(const std::string& binary);
   void create_registry();
-  void process_die_tree(Dwarf_Die cu_die);
-  void process_die(Dwarf_Die cu_die);
-  const Registry<string, StructSchema>& get_registry() const;
+  const Registry<std::string, StructInfo>& get_registry() const;
 
 private:
-  int bin_fd;
-  Registry<string, StructSchema> registry;
+  void process_die_tree(Dwarf_Die die);
+  void process_struct_die(Dwarf_Die die);
+  TypeInfo* get_or_create_type(Dwarf_Die die);
+
   DwarfContext context;
+  Registry<std::string, StructInfo> registry;
+
+  std::unordered_map<Dwarf_Off, std::unique_ptr<TypeInfo>> types;
+  std::vector<std::unique_ptr<FieldInfo>> owned_fields;
 };

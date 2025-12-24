@@ -25,10 +25,11 @@ int main(int argc, char* argv[]) {
     ext.create_registry();
     for (const auto& [k, v] : ext.get_registry().get_map()) {
       std::cout << k << ": " << v.size << '\n';
-      std::cout << "Fields:" << '\n';
       for (const auto& field : v.fields) {
-        std::cout << field.name << "->" << field.type_name << ": " << field.size
+        std::cout << field.name << ": " << field.size
                   << "->Offset: " << field.offset << '\n';
+        std::cout << "Bit offset: " << field.bit_offset << '\n';
+        std::cout << "Bit size" << field.bit_size << '\n';
       }
     }
   });

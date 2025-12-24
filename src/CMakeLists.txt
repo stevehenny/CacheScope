@@ -3,6 +3,7 @@ add_executable(cache_scope main.cpp)
 add_subdirectory(dwarf)
 add_subdirectory(analysis)
 add_subdirectory(runtime)
+add_subdirectory(hooks)
 
 target_link_libraries(cache_scope
   PRIVATE
@@ -10,5 +11,6 @@ target_link_libraries(cache_scope
     cachescope_dwarf
     analysis
     runtime
+    hooks
     cache_scope_includes
 )

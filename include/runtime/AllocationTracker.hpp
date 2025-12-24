@@ -5,16 +5,16 @@
 #include <string>
 #include <unordered_map>
 
-struct MemAlloc {
-  uint64_t base;
-  uint64_t size;
-  std::any type;
-};
+#include "common/Constants.hpp"
 
 struct Allocation {
   uint64_t base;
   uint64_t size;
+  uint64_t timestamp;
+  uint32_t tid;
   std::string struct_name;
+  std::any type;
+  CScope::AllocationKind alloc_type{NONE};  // heap, mmap, stack
 };
 
 using std::unordered_map;

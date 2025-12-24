@@ -20,8 +20,6 @@ Tracer::Tracer() {
   attr.type = PERF_TYPE_HARDWARE;
   attr.size = sizeof(attr);
 
-  attr.config = PERF_COUNT_HW_CACHE_MISSES;
-
   attr.sample_type =
     (PERF_SAMPLE_IP | PERF_SAMPLE_ADDR | PERF_SAMPLE_TID | PERF_SAMPLE_CPU);
   attr.sample_period  = 1000;
