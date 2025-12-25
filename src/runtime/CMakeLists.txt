@@ -1,5 +1,6 @@
 add_library(runtime
 Tracer.cpp
+Parser.cpp
 )
 
 target_link_libraries(runtime
