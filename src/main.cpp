@@ -75,7 +75,6 @@ int main(int argc, char* argv[]) {
 
     Parser parser{"trace.bin"};
     std::vector<Allocation>& allocs = parser.get_allocs();
-
     for (auto alloc : allocs) {
       std::cout << "base=0x" << std::hex << alloc.base << " size=" << std::dec
                 << alloc.size << " kind=" << (int)alloc.kind << "callsite = 0x"

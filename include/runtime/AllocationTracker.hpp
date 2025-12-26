@@ -13,8 +13,10 @@ struct Allocation {
   uintptr_t base;
   size_t size;
   uintptr_t callsite_ip;
+  uint32_t pid;
   TypeInfo* type;
   AllocationKind kind;
+  bool is_free{false};
   int mmap_fd{-1};  // -1 for anonymous / heap
 };
 
