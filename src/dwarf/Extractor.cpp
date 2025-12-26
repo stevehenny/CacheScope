@@ -4,9 +4,9 @@
 #include <libdwarf-2/libdwarf.h>
 
 #include <cassert>
+#include <cstdint>
 #include <unordered_map>
 
-#include "common/Types.hpp"
 #include "dwarf/DwarfContext.hpp"
 
 /* ============================================================
@@ -42,21 +42,6 @@ static Dwarf_Die resolve_type_die(Dwarf_Debug dbg, Dwarf_Die die) {
   return type_die;
 }
 
-static size_t member_byte_offset(Dwarf_Debug dbg, Dwarf_Die die) {
-  Dwarf_Attribute attr = nullptr;
-  if (dwarf_attr(die, DW_AT_data_member_location, &attr, nullptr) != DW_DLV_OK)
-    return 0;
-
-  Dwarf_Unsigned offset = 0;
-  if (dwarf_formudata(attr, &offset, nullptr) != DW_DLV_OK) {
-    dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
-    return 0;
-  }
-
-  dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
-  return static_cast<size_t>(offset);
-}
-
 static TypeKind tag_to_kind(Dwarf_Half tag) {
   switch (tag) {
     case DW_TAG_base_type:
@@ -81,20 +66,77 @@ static TypeKind tag_to_kind(Dwarf_Half tag) {
 }
 
 /* ============================================================
+ * DW_OP_fbreg extraction
+ * ============================================================ */
+
+static bool extract_fbreg_offset(Dwarf_Debug dbg, Dwarf_Die die,
+                                 int64_t& out_offset) {
+  Dwarf_Attribute attr = nullptr;
+
+  if (dwarf_attr(die, DW_AT_location, &attr, nullptr) != DW_DLV_OK) {
+    Dwarf_Attribute abs = nullptr;
+    if (dwarf_attr(die, DW_AT_abstract_origin, &abs, nullptr) != DW_DLV_OK)
+      return false;
+
+    Dwarf_Off off = 0;
+    dwarf_global_formref(abs, &off, nullptr);
+    dwarf_dealloc(dbg, abs, DW_DLA_ATTR);
+
+    Dwarf_Die origin = nullptr;
+    if (dwarf_offdie_b(dbg, off, true, &origin, nullptr) != DW_DLV_OK)
+      return false;
+
+    bool ok = extract_fbreg_offset(dbg, origin, out_offset);
+    dwarf_dealloc(dbg, origin, DW_DLA_DIE);
+    return ok;
+  }
+
+  Dwarf_Unsigned exprlen = 0;
+  Dwarf_Ptr expr         = nullptr;
+
+  if (dwarf_formexprloc(attr, &exprlen, &expr, nullptr) != DW_DLV_OK) {
+    dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
+    return false;
+  }
+
+  const uint8_t* p   = static_cast<const uint8_t*>(expr);
+  const uint8_t* end = p + exprlen;
+
+  if (p >= end || *p != DW_OP_fbreg) {
+    dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
+    return false;
+  }
+
+  ++p;
+  int64_t value = 0;
+  int shift     = 0;
+  while (p < end) {
+    uint8_t byte = *p++;
+    value |= int64_t(byte & 0x7f) << shift;
+    shift += 7;
+    if ((byte & 0x80) == 0) break;
+  }
+
+  if (shift < 64 && (value & (1LL << (shift - 1)))) value |= (-1LL) << shift;
+
+  out_offset = value;
+  dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
+  return true;
+}
+
+/* ============================================================
  * Extractor
  * ============================================================ */
 
 Extractor::Extractor(const std::string& bin) : context(bin) {}
 
 void Extractor::create_registry() {
-  Dwarf_Debug dbg = context.dbg();
-
+  Dwarf_Debug dbg  = context.dbg();
   Dwarf_Die cu_die = nullptr;
-  Dwarf_Error err  = nullptr;
 
   while (dwarf_next_cu_header_d(dbg, true, nullptr, nullptr, nullptr, nullptr,
                                 nullptr, nullptr, nullptr, nullptr, nullptr,
-                                nullptr, &err) == DW_DLV_OK) {
+                                nullptr, nullptr) == DW_DLV_OK) {
     if (dwarf_siblingof_b(dbg, nullptr, true, &cu_die, nullptr) == DW_DLV_OK) {
       process_die_tree(cu_die);
       dwarf_dealloc(dbg, cu_die, DW_DLA_DIE);
@@ -102,12 +144,8 @@ void Extractor::create_registry() {
   }
 }
 
-const Registry<std::string, StructInfo>& Extractor::get_registry() const {
-  return registry;
-}
-
 /* ============================================================
- * Type creation
+ * Type creation (FIXED)
  * ============================================================ */
 
 TypeInfo* Extractor::get_or_create_type(Dwarf_Die die) {
@@ -132,16 +170,87 @@ TypeInfo* Extractor::get_or_create_type(Dwarf_Die die) {
     raw->size = static_cast<size_t>(size);
 
   types.emplace(off, std::move(t));
+
+  if (raw->kind == TypeKind::Pointer) {
+    Dwarf_Die pointee_die = resolve_type_die(context.dbg(), die);
+    raw->pointee          = get_or_create_type(pointee_die);
+
+    if (raw->size == 0) raw->size = sizeof(void*);
+
+    if (raw->pointee) {
+      raw->name = raw->pointee->name + "*";
+    } else {
+      raw->name = "void*";
+    }
+  }
+
+  if (raw->kind == TypeKind::Typedef) {
+    Dwarf_Die target  = resolve_type_die(context.dbg(), die);
+    TypeInfo* aliased = get_or_create_type(target);
+    if (aliased) {
+      raw->pointee = aliased;
+      raw->size    = aliased->size;
+    }
+  }
+
   return raw;
 }
 
 /* ============================================================
- * DIE walking
+ * Stack variable extraction
+ * ============================================================ */
+
+void Extractor::process_stack_variable(Dwarf_Die die,
+                                       const std::string& function) {
+  int64_t offset = 0;
+  if (!extract_fbreg_offset(context.dbg(), die, offset)) return;
+
+  StackObject obj;
+  obj.function     = function;
+  obj.name         = die_name(context.dbg(), die);
+  obj.frame_offset = offset;
+
+  Dwarf_Die type_die = resolve_type_die(context.dbg(), die);
+  obj.type           = get_or_create_type(type_die);
+  obj.size           = obj.type ? obj.type->size : 0;
+
+  stack_objects.push_back(obj);
+}
+
+/* ============================================================
+ * Subprogram
+ * ============================================================ */
+
+void Extractor::process_subprogram_die(Dwarf_Die die) {
+  std::string function = die_name(context.dbg(), die);
+
+  Dwarf_Die child = nullptr;
+  if (dwarf_child(die, &child, nullptr) != DW_DLV_OK) return;
+
+  for (Dwarf_Die cur = child; cur;) {
+    Dwarf_Half tag = 0;
+    dwarf_tag(cur, &tag, nullptr);
+
+    if (tag == DW_TAG_variable || tag == DW_TAG_formal_parameter)
+      process_stack_variable(cur, function);
+
+    Dwarf_Die sib = nullptr;
+    if (dwarf_siblingof_b(context.dbg(), cur, true, &sib, nullptr) !=
+        DW_DLV_OK) {
+      dwarf_dealloc(context.dbg(), cur, DW_DLA_DIE);
+      break;
+    }
+
+    dwarf_dealloc(context.dbg(), cur, DW_DLA_DIE);
+    cur = sib;
+  }
+}
+
+/* ============================================================
+ * Struct extraction
  * ============================================================ */
 
 void Extractor::process_struct_die(Dwarf_Die die) {
-  Dwarf_Debug dbg = context.dbg();
-
   TypeInfo* type = get_or_create_type(die);
   if (!type ||
       (type->kind != TypeKind::Struct && type->kind != TypeKind::Class))
@@ -163,18 +272,10 @@ void Extractor::process_struct_die(Dwarf_Die die) {
     dwarf_tag(cur, &tag, nullptr);
 
     if (tag == DW_TAG_member) {
-      auto field    = std::make_unique<FieldInfo>();
-      field->name   = die_name(dbg, cur);
-      field->offset = member_byte_offset(dbg, cur);
+      auto field  = std::make_unique<FieldInfo>();
+      field->name = die_name(context.dbg(), cur);
 
-      // bitfields
-      Dwarf_Attribute a = nullptr;
-      if (dwarf_attr(cur, DW_AT_bit_size, &a, nullptr) == DW_DLV_OK) {
-        dwarf_formudata(a, &field->bit_size, nullptr);
-        dwarf_dealloc(dbg, a, DW_DLA_ATTR);
-      }
-
-      Dwarf_Die type_die = resolve_type_die(dbg, cur);
+      Dwarf_Die type_die = resolve_type_die(context.dbg(), cur);
       field->type        = get_or_create_type(type_die);
       field->size        = field->type ? field->type->size : 0;
 
@@ -184,17 +285,22 @@ void Extractor::process_struct_die(Dwarf_Die die) {
     }
 
     Dwarf_Die sib = nullptr;
-    if (dwarf_siblingof_b(dbg, cur, true, &sib, nullptr) != DW_DLV_OK) {
-      dwarf_dealloc(dbg, cur, DW_DLA_DIE);
+    if (dwarf_siblingof_b(context.dbg(), cur, true, &sib, nullptr) !=
+        DW_DLV_OK) {
+      dwarf_dealloc(context.dbg(), cur, DW_DLA_DIE);
       break;
     }
 
-    dwarf_dealloc(dbg, cur, DW_DLA_DIE);
+    dwarf_dealloc(context.dbg(), cur, DW_DLA_DIE);
     cur = sib;
   }
 
   registry.register_struct(info.name, info);
 }
+
+/* ============================================================
+ * DIE traversal
+ * ============================================================ */
 
 void Extractor::process_die_tree(Dwarf_Die die) {
   Dwarf_Half tag = 0;
@@ -202,6 +308,10 @@ void Extractor::process_die_tree(Dwarf_Die die) {
 
   if (tag == DW_TAG_structure_type || tag == DW_TAG_class_type)
     process_struct_die(die);
+  else if (tag == DW_TAG_subprogram) {
+    process_subprogram_die(die);
+    return;
+  }
 
   Dwarf_Die child = nullptr;
   if (dwarf_child(die, &child, nullptr) != DW_DLV_OK) return;
@@ -219,4 +329,12 @@ void Extractor::process_die_tree(Dwarf_Die die) {
     dwarf_dealloc(context.dbg(), cur, DW_DLA_DIE);
     cur = sib;
   }
+}
+
+const std::vector<StackObject>& Extractor::get_stack_objects() const {
+  return stack_objects;
+}
+
+const Registry<std::string, StructInfo>& Extractor::get_registry() const {
+  return registry;
 }

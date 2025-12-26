@@ -48,6 +48,17 @@ int main(int argc, char* argv[]) {
       }
     }
 
+    const auto& ref = ext.get_stack_objects();
+    std::cout << ref.size() << '\n';
+    for (const auto& var : ref) {
+      // std::cout << var.function << '\n';
+      std::cout << var.type->name << '\n';
+      std::cout << var.name << '\n';
+      std::cout << var.function << ": " << var.frame_offset << '\n';
+      std::cout << "0x" << std::hex << var.high_pc << "->" << "0x" << std::hex
+                << var.low_pc << '\n';
+    }
+
     // ------------------------------------------------------------
     // Phase 2: Run instrumented binary
     // ------------------------------------------------------------
@@ -74,12 +85,14 @@ int main(int argc, char* argv[]) {
     waitpid(pid, &status, 0);
 
     Parser parser{"trace.bin"};
-    std::vector<Allocation>& allocs = parser.get_allocs();
-    for (auto alloc : allocs) {
-      std::cout << "base=0x" << std::hex << alloc.base << " size=" << std::dec
-                << alloc.size << " kind=" << (int)alloc.kind << "callsite = 0x"
-                << std::hex << alloc.callsite_ip << "\n";
-    }
+    // std::vector<Allocation>& allocs = parser.get_allocs();
+    // for (auto alloc : allocs) {
+    //   std::cout << "base=0x" << std::hex << alloc.base << " size=" <<
+    //   std::dec
+    //             << alloc.size << " kind=" << (int)alloc.kind << "callsite =
+    //             0x"
+    //             << std::hex << alloc.callsite_ip << "\n";
+    // }
     // for(auto entry : AllocationTracker::instance().get_table())
     if (WIFEXITED(status)) {
       std::cout << "Target exited with code " << WEXITSTATUS(status) << "\n";
