@@ -19,6 +19,10 @@ enum class TypeKind {
   Union,
   Enum,
   Typedef,
+  Function,
+  Const,
+  Volatile,
+  Reference,
   Unknown
 };
 

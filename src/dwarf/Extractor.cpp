@@ -5,6 +5,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <memory>
 #include <unordered_map>
 
 #include "dwarf/DwarfContext.hpp"
@@ -20,7 +21,7 @@ static std::string die_name(Dwarf_Debug dbg, Dwarf_Die die) {
     dwarf_dealloc(dbg, name, DW_DLA_STRING);
     return s;
   }
-  return {};
+  return "<anonymous>";
 }
 
 static Dwarf_Off die_offset(Dwarf_Die die) {
@@ -60,6 +61,14 @@ static TypeKind tag_to_kind(Dwarf_Half tag) {
       return TypeKind::Enum;
     case DW_TAG_typedef:
       return TypeKind::Typedef;
+    case DW_TAG_subroutine_type:
+      return TypeKind::Function;
+    case DW_TAG_const_type:
+      return TypeKind::Const;
+    case DW_TAG_volatile_type:
+      return TypeKind::Volatile;
+    case DW_TAG_reference_type:
+      return TypeKind::Reference;
     default:
       return TypeKind::Unknown;
   }
@@ -72,7 +81,6 @@ static TypeKind tag_to_kind(Dwarf_Half tag) {
 static bool extract_fbreg_offset(Dwarf_Debug dbg, Dwarf_Die die,
                                  int64_t& out_offset) {
   Dwarf_Attribute attr = nullptr;
-
   if (dwarf_attr(die, DW_AT_location, &attr, nullptr) != DW_DLV_OK) {
     Dwarf_Attribute abs = nullptr;
     if (dwarf_attr(die, DW_AT_abstract_origin, &abs, nullptr) != DW_DLV_OK)
@@ -93,7 +101,6 @@ static bool extract_fbreg_offset(Dwarf_Debug dbg, Dwarf_Die die,
 
   Dwarf_Unsigned exprlen = 0;
   Dwarf_Ptr expr         = nullptr;
-
   if (dwarf_formexprloc(attr, &exprlen, &expr, nullptr) != DW_DLV_OK) {
     dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
     return false;
@@ -116,7 +123,6 @@ static bool extract_fbreg_offset(Dwarf_Debug dbg, Dwarf_Die die,
     shift += 7;
     if ((byte & 0x80) == 0) break;
   }
-
   if (shift < 64 && (value & (1LL << (shift - 1)))) value |= (-1LL) << shift;
 
   out_offset = value;
@@ -145,21 +151,48 @@ void Extractor::create_registry() {
 }
 
 /* ============================================================
- * Type creation (FIXED)
+ * Type creation (robust, safe)
  * ============================================================ */
 
-TypeInfo* Extractor::get_or_create_type(Dwarf_Die die) {
-  if (!die) return nullptr;
+TypeInfo* Extractor::get_or_create_type(Dwarf_Die die, int depth) {
+  if (!die || depth > 10) return nullptr;  // Limit recursion
 
   Dwarf_Off off = die_offset(die);
-  auto it       = types.find(off);
-  if (it != types.end()) return it->second.get();
+
+  auto it = types.find(off);
+  if (it != types.end()) {
+    if (!it->second) return nullptr;  // recursive placeholder
+    return it->second.get();
+  }
+
+  types[off] = nullptr;  // placeholder for recursion detection
+
+  char* raw_name = nullptr;
+  dwarf_diename(die, &raw_name, nullptr);
+  std::string n = raw_name ? raw_name : "<anonymous>";
+  if (raw_name) dwarf_dealloc(context.dbg(), raw_name, DW_DLA_STRING);
+
+  // Bail out early for STL internals
+  if (n.find("std::") != std::string::npos ||
+      n.find("_Hash_node") != std::string::npos ||
+      n.find("_Hashtable") != std::string::npos ||
+      n.find("_List_node") != std::string::npos ||
+      n.find("_Rb_tree_node") != std::string::npos) {
+    auto t        = std::make_unique<TypeInfo>();
+    t->die_offset = off;
+    t->name       = "<STL:" + n + ">";
+    t->kind       = TypeKind::Unknown;
+    t->size       = 0;
+    types[off]    = std::move(t);
+    return types[off].get();
+  }
 
   auto t        = std::make_unique<TypeInfo>();
   TypeInfo* raw = t.get();
+  types[off]    = std::move(t);
 
   raw->die_offset = off;
-  raw->name       = die_name(context.dbg(), die);
+  raw->name       = n;
 
   Dwarf_Half tag = 0;
   dwarf_tag(die, &tag, nullptr);
@@ -169,31 +202,98 @@ TypeInfo* Extractor::get_or_create_type(Dwarf_Die die) {
   if (dwarf_bytesize(die, &size, nullptr) == DW_DLV_OK)
     raw->size = static_cast<size_t>(size);
 
-  types.emplace(off, std::move(t));
-
+  // ---------- Pointer ----------
   if (raw->kind == TypeKind::Pointer) {
     Dwarf_Die pointee_die = resolve_type_die(context.dbg(), die);
-    raw->pointee          = get_or_create_type(pointee_die);
-
-    if (raw->size == 0) raw->size = sizeof(void*);
-
-    if (raw->pointee) {
-      raw->name = raw->pointee->name + "*";
-    } else {
-      raw->name = "void*";
-    }
+    raw->pointee          = get_or_create_type(pointee_die, depth + 1);
+    raw->size             = raw->size ? raw->size : sizeof(void*);
+    raw->name             = raw->pointee ? raw->pointee->name + "*" : "void*";
   }
 
-  if (raw->kind == TypeKind::Typedef) {
+  // ---------- Typedef ----------
+  else if (raw->kind == TypeKind::Typedef) {
     Dwarf_Die target  = resolve_type_die(context.dbg(), die);
-    TypeInfo* aliased = get_or_create_type(target);
+    TypeInfo* aliased = get_or_create_type(target, depth + 1);
     if (aliased) {
       raw->pointee = aliased;
       raw->size    = aliased->size;
+      raw->name    = aliased->name;
     }
   }
 
+  // ---------- Array ----------
+  else if (raw->kind == TypeKind::Array) {
+    Dwarf_Die elem_die = resolve_type_die(context.dbg(), die);
+    raw->element       = get_or_create_type(elem_die, depth + 1);
+    raw->array_len     = 0;
+
+    Dwarf_Die child = nullptr;
+    if (dwarf_child(die, &child, nullptr) == DW_DLV_OK) {
+      for (Dwarf_Die cur = child; cur;) {
+        Dwarf_Half ctag = 0;
+        dwarf_tag(cur, &ctag, nullptr);
+        if (ctag == DW_TAG_subrange_type) {
+          Dwarf_Attribute attr = nullptr;
+          Dwarf_Unsigned upper = 0;
+          if (dwarf_attr(cur, DW_AT_upper_bound, &attr, nullptr) == DW_DLV_OK) {
+            dwarf_formudata(attr, &upper, nullptr);
+            raw->array_len = upper + 1;
+            dwarf_dealloc(context.dbg(), attr, DW_DLA_ATTR);
+          }
+        }
+
+        Dwarf_Die sib = nullptr;
+        if (dwarf_siblingof_b(context.dbg(), cur, true, &sib, nullptr) !=
+            DW_DLV_OK) {
+          dwarf_dealloc(context.dbg(), cur, DW_DLA_DIE);
+          break;
+        }
+        dwarf_dealloc(context.dbg(), cur, DW_DLA_DIE);
+        cur = sib;
+      }
+    }
+
+    if (raw->element) {
+      raw->size = raw->element->size * (raw->array_len ? raw->array_len : 1);
+      raw->name =
+        raw->element->name +
+        (raw->array_len ? "[" + std::to_string(raw->array_len) + "]" : "[]");
+    } else {
+      raw->name = "<unknown>[]";
+    }
+  }
+
+  // ---------- Const / Volatile / Reference ----------
+  else if (raw->kind == TypeKind::Const || raw->kind == TypeKind::Volatile ||
+           raw->kind == TypeKind::Reference) {
+    Dwarf_Die target = resolve_type_die(context.dbg(), die);
+    TypeInfo* base   = get_or_create_type(target, depth + 1);
+    raw->pointee     = base;
+    raw->size        = base ? base->size : 0;
+    raw->name =
+      (tag == DW_TAG_const_type      ? "const "
+       : tag == DW_TAG_volatile_type ? "volatile "
+                                     : "") +
+      (raw->kind == TypeKind::Reference ? (base ? base->name + "&" : "&")
+                                        : (base ? base->name : "<unknown>"));
+  }
+
+  // ---------- Struct / Class ----------
+  else if (raw->kind == TypeKind::Struct || raw->kind == TypeKind::Class) {
+    Dwarf_Bool is_decl = 0;
+    if (dwarf_hasattr(die, DW_AT_declaration, &is_decl, nullptr) != DW_DLV_OK)
+      is_decl = 0;
+
+    if (is_decl) return raw;
+
+    process_struct_die(die);
+  }
+
   return raw;
+}
+
+TypeInfo* Extractor::get_or_create_type(Dwarf_Die die) {
+  return get_or_create_type(die, 0);
 }
 
 /* ============================================================
@@ -240,7 +340,6 @@ void Extractor::process_subprogram_die(Dwarf_Die die) {
       dwarf_dealloc(context.dbg(), cur, DW_DLA_DIE);
       break;
     }
-
     dwarf_dealloc(context.dbg(), cur, DW_DLA_DIE);
     cur = sib;
   }
@@ -290,7 +389,6 @@ void Extractor::process_struct_die(Dwarf_Die die) {
       dwarf_dealloc(context.dbg(), cur, DW_DLA_DIE);
       break;
     }
-
     dwarf_dealloc(context.dbg(), cur, DW_DLA_DIE);
     cur = sib;
   }
@@ -325,7 +423,6 @@ void Extractor::process_die_tree(Dwarf_Die die) {
       dwarf_dealloc(context.dbg(), cur, DW_DLA_DIE);
       break;
     }
-
     dwarf_dealloc(context.dbg(), cur, DW_DLA_DIE);
     cur = sib;
   }

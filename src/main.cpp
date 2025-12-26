@@ -52,7 +52,7 @@ int main(int argc, char* argv[]) {
     std::cout << ref.size() << '\n';
     for (const auto& var : ref) {
       // std::cout << var.function << '\n';
-      std::cout << var.type->name << '\n';
+      if (var.type) std::cout << var.type->name << '\n';
       std::cout << var.name << '\n';
       std::cout << var.function << ": " << var.frame_offset << '\n';
       std::cout << "0x" << std::hex << var.high_pc << "->" << "0x" << std::hex

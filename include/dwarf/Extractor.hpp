@@ -29,6 +29,8 @@ public:
 private:
   void process_die_tree(Dwarf_Die die);
   void process_struct_die(Dwarf_Die die);
+  TypeInfo* get_or_create_type(Dwarf_Die die, int depth);
+
   TypeInfo* get_or_create_type(Dwarf_Die die);
 
   void process_subprogram_die(Dwarf_Die die);
