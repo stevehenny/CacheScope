@@ -151,7 +151,7 @@ void Extractor::create_registry() {
 }
 
 /* ============================================================
- * Type creation (robust, safe)
+ * Type creation
  * ============================================================ */
 
 TypeInfo* Extractor::get_or_create_type(Dwarf_Die die, int depth) {
@@ -314,7 +314,7 @@ void Extractor::process_stack_variable(Dwarf_Die die,
   obj.type           = get_or_create_type(type_die);
   obj.size           = obj.type ? obj.type->size : 0;
 
-  stack_objects.push_back(obj);
+  if (obj.name != "<anonymous>") stack_objects.push_back(obj);
 }
 
 /* ============================================================
