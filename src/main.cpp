@@ -61,6 +61,14 @@ int main(int argc, char* argv[]) {
     // ------------------------------------------------------------
     // Phase 2: Fork + PERF attach (CORRECTLY SYNCHRONIZED)
     // ------------------------------------------------------------
+    TracerConfig cfg{};
+    cfg.event          = CacheEvent::L1D_LOAD;
+    cfg.sample_period  = 1000;
+    cfg.precise_ip     = true;
+    cfg.exclude_kernel = true;
+    cfg.exclude_hv     = true;
+    cfg.cpu            = TracerConfig::detect_cpu_vendor();
+
     pid_t child = fork();
 
     if (child == 0) {
@@ -82,7 +90,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Attach perf AFTER child is stopped
-    Tracer tracer{child};
+    Tracer tracer{child, cfg};
     tracer.start();
 
     // Resume child
@@ -101,6 +109,13 @@ int main(int argc, char* argv[]) {
     // ------------------------------------------------------------
     auto samples = tracer.drain();
     std::cout << "Collected samples: " << samples.size() << "\n";
+    for (auto sample : samples) {
+      std::cout << "CPU: " << sample.cpu << '\n';
+      std::cout << "TID: " << std::dec << sample.tid << '\n';
+      std::cout << "ADDR: 0x" << std::hex << sample.addr << '\n';
+      std::cout << "IP: 0x" << std::hex << sample.ip << '\n';
+      std::cout << '\n';
+    }
   });
 
   auto* visualize =

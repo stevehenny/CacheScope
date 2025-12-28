@@ -8,10 +8,11 @@
 #include <vector>
 
 #include "runtime/MemAccess.hpp"
+#include "runtime/TracerConfig.hpp"
 
 class Tracer {
 public:
-  explicit Tracer(pid_t pid);
+  explicit Tracer(pid_t pid, const TracerConfig& cfg);
   ~Tracer();
 
   Tracer(const Tracer&)            = delete;

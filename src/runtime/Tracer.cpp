@@ -11,6 +11,8 @@
 #include <cstring>
 #include <stdexcept>
 
+#include "runtime/TracerConfig.hpp"
+
 // ------------------------------------------------------------
 // Helpers
 // ------------------------------------------------------------
@@ -21,21 +23,18 @@ static inline void full_memory_barrier() {
 // ------------------------------------------------------------
 // Tracer implementation
 // ------------------------------------------------------------
-Tracer::Tracer(pid_t pid) : _pid(pid) {
-  perf_event_attr attr{};
-  attr.type   = PERF_TYPE_HARDWARE;
-  attr.size   = sizeof(attr);
-  attr.config = PERF_COUNT_HW_CPU_CYCLES;  // placeholder
+Tracer::Tracer(pid_t pid, const TracerConfig& cfg) : _pid(pid) {
+  TracerConfig config = cfg;
+  config.cpu          = TracerConfig::detect_cpu_vendor();
 
-  attr.sample_type =
-    PERF_SAMPLE_IP | PERF_SAMPLE_ADDR | PERF_SAMPLE_TID | PERF_SAMPLE_CPU;
+  perf_event_attr attr = config.build_attr();
 
-  attr.sample_period  = 1000;
-  attr.disabled       = 1;
-  attr.exclude_kernel = 1;
-  attr.exclude_hv     = 1;
-  attr.precise_ip     = 1;
+  _perf_fd = syscall(SYS_perf_event_open, &attr, _pid, -1, -1, 0);
 
+  if (_perf_fd < 0) {
+    perror("perf_event_open");
+    throw std::runtime_error("perf_event_open failed");
+  }
   _perf_fd = syscall(SYS_perf_event_open, &attr, _pid, -1, -1, 0);
   if (_perf_fd < 0) {
     perror("perf_event_open");
