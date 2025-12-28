@@ -11,7 +11,6 @@
 #include "DwarfContext.hpp"
 #include "common/Registry.hpp"
 #include "common/Types.hpp"
-#include "dwarf/StackObject.hpp"
 
 class Extractor {
 public:
@@ -24,7 +23,7 @@ public:
     const;
   const std::vector<std::unique_ptr<FieldInfo>>& get_owned_fields() const;
 
-  const std::vector<StackObject>& get_stack_objects() const;
+  const std::vector<DwarfStackObject>& get_stack_objects() const;
 
 private:
   void process_die_tree(Dwarf_Die die);
@@ -42,5 +41,5 @@ private:
 
   std::unordered_map<Dwarf_Off, std::unique_ptr<TypeInfo>> types;
   std::vector<std::unique_ptr<FieldInfo>> owned_fields;
-  std::vector<StackObject> stack_objects;
+  std::vector<DwarfStackObject> stack_objects;
 };

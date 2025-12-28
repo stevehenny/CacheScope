@@ -1,22 +1,56 @@
 #pragma once
+
+#include <linux/perf_event.h>
+#include <unistd.h>
+
+#include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include "runtime/MemAccess.hpp"
 
-using std::vector;
-
 class Tracer {
 public:
-  Tracer();
+  explicit Tracer(pid_t pid);
   ~Tracer();
+
+  Tracer(const Tracer&)            = delete;
+  Tracer& operator=(const Tracer&) = delete;
+
+  Tracer(Tracer&&)            = delete;
+  Tracer& operator=(Tracer&&) = delete;
+
   void start();
   void stop();
+
   std::vector<MemAccess> drain();
 
 private:
-  int perf_fd{-1};
-  void* mmap_buf{nullptr};
-  size_t mmap_size{0};
+  // ------------------------------------------------------------
+  // perf event
+  // ------------------------------------------------------------
+  int _perf_fd{-1};
+  pid_t _pid{-1};
 
-  vector<MemAccess> samples;
+  // ------------------------------------------------------------
+  // mmap'd perf ring buffer
+  // ------------------------------------------------------------
+  void* _mmap_buf{nullptr};
+  size_t _mmap_size{0};
+
+  perf_event_mmap_page* _meta{nullptr};
+  uint8_t* _data{nullptr};
+
+  // ------------------------------------------------------------
+  // ring buffer bookkeeping
+  // ------------------------------------------------------------
+  size_t _page_size{0};
+  size_t _data_pages{0};
+  size_t _data_mask{0};
+  uint64_t _tail{0};
+
+  // ------------------------------------------------------------
+  // collected samples
+  // ------------------------------------------------------------
+  std::vector<MemAccess> _samples;
 };

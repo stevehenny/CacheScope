@@ -28,10 +28,10 @@ struct Entry {
   std::atomic<int> mmap_fd{-1};
 };
 
-class AllocationTracker {
+class HeapAllocationTracker {
 public:
-  static AllocationTracker& instance() {
-    static AllocationTracker t;
+  static HeapAllocationTracker& instance() {
+    static HeapAllocationTracker t;
     return t;
   }
 
@@ -116,7 +116,7 @@ public:
   Entry* get_table() { return _table; }
 
 private:
-  AllocationTracker() = default;
+  HeapAllocationTracker() = default;
 
   static size_t hash(uintptr_t x) { return (x >> 4) & (MAX_ALLOCS - 1); }
 

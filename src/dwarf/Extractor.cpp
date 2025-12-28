@@ -161,11 +161,11 @@ TypeInfo* Extractor::get_or_create_type(Dwarf_Die die, int depth) {
 
   auto it = types.find(off);
   if (it != types.end()) {
-    if (!it->second) return nullptr;  // recursive placeholder
+    if (!it->second) return nullptr;
     return it->second.get();
   }
-
-  types[off] = nullptr;  // placeholder for recursion detection
+  // placeholder for recursion detection
+  types[off] = nullptr;
 
   char* raw_name = nullptr;
   dwarf_diename(die, &raw_name, nullptr);
@@ -305,7 +305,7 @@ void Extractor::process_stack_variable(Dwarf_Die die,
   int64_t offset = 0;
   if (!extract_fbreg_offset(context.dbg(), die, offset)) return;
 
-  StackObject obj;
+  DwarfStackObject obj;
   obj.function     = function;
   obj.name         = die_name(context.dbg(), die);
   obj.frame_offset = offset;
@@ -428,7 +428,7 @@ void Extractor::process_die_tree(Dwarf_Die die) {
   }
 }
 
-const std::vector<StackObject>& Extractor::get_stack_objects() const {
+const std::vector<DwarfStackObject>& Extractor::get_stack_objects() const {
   return stack_objects;
 }
 

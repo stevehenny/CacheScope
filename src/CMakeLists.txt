@@ -12,6 +12,5 @@ target_link_libraries(cache_scope
     cachescope_dwarf
     analysis
     runtime
-    hooks
     cache_scope_includes
 )

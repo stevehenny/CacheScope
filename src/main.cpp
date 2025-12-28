@@ -1,4 +1,5 @@
 #include <limits.h>
+#include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -7,8 +8,7 @@
 #include <string>
 
 #include "dwarf/Extractor.hpp"
-#include "runtime/AllocationTracker.hpp"
-#include "runtime/Parser.hpp"
+#include "runtime/Tracer.hpp"
 
 static std::string get_self_dir() {
   char buf[PATH_MAX];
@@ -51,56 +51,56 @@ int main(int argc, char* argv[]) {
     const auto& ref = ext.get_stack_objects();
     std::cout << ref.size() << '\n';
     for (const auto& var : ref) {
-      // std::cout << var.function << '\n';
       if (var.type) std::cout << var.type->name << '\n';
       std::cout << var.name << '\n';
       std::cout << var.function << ": " << var.frame_offset << '\n';
-      std::cout << "0x" << std::hex << var.high_pc << "->" << "0x" << std::hex
-                << var.low_pc << '\n';
+      std::cout << "stack frame offset: " << var.frame_offset << '\n';
+      std::cout << '\n';
     }
 
     // ------------------------------------------------------------
-    // Phase 2: Run instrumented binary
+    // Phase 2: Fork + PERF attach (CORRECTLY SYNCHRONIZED)
     // ------------------------------------------------------------
-    pid_t pid = fork();
-    if (pid == 0) {
-      std::string self_dir = get_self_dir();
+    pid_t child = fork();
 
-      // Example layout:
-      //   build/cache_scope
-      //   build/lib/libcachescope_alloc.so
-      std::string preload = self_dir + "/hooks/libcachescope_alloc.so";
+    if (child == 0) {
+      // Child: stop immediately so parent can attach perf
+      raise(SIGSTOP);
 
-      setenv("LD_PRELOAD", preload.c_str(), 1);
-      setenv("CACHESCOPE_ENABLE", "1", 1);
-      setenv("CACHESCOPE_TRACE", "trace.bin", 1);
+      char* const args[] = {const_cast<char*>(binary.c_str()), nullptr};
 
-      AllocationTracker::instance().enable();
-      execl(binary.c_str(), binary.c_str(), nullptr);
-      AllocationTracker::instance().disable();
+      execvp(binary.c_str(), args);
       _exit(127);
     }
-    // PARENT
-    int status = 0;
-    waitpid(pid, &status, 0);
 
-    Parser parser{"trace.bin"};
-    // std::vector<Allocation>& allocs = parser.get_allocs();
-    // for (auto alloc : allocs) {
-    //   std::cout << "base=0x" << std::hex << alloc.base << " size=" <<
-    //   std::dec
-    //             << alloc.size << " kind=" << (int)alloc.kind << "callsite =
-    //             0x"
-    //             << std::hex << alloc.callsite_ip << "\n";
-    // }
-    // for(auto entry : AllocationTracker::instance().get_table())
+    // Parent
+    int status = 0;
+    waitpid(child, &status, WUNTRACED);
+
+    if (!WIFSTOPPED(status)) {
+      throw std::runtime_error("Child did not stop as expected");
+    }
+
+    // Attach perf AFTER child is stopped
+    Tracer tracer{child};
+    tracer.start();
+
+    // Resume child
+    kill(child, SIGCONT);
+
+    // Wait for completion
+    waitpid(child, &status, 0);
+    tracer.stop();
+
     if (WIFEXITED(status)) {
       std::cout << "Target exited with code " << WEXITSTATUS(status) << "\n";
-
-      if (std::filesystem::exists("trace.bin")) {
-        std::filesystem::remove("trace.bin");
-      }
     }
+
+    // ------------------------------------------------------------
+    // Phase 3: (future) correlate samples → DWARF objects
+    // ------------------------------------------------------------
+    auto samples = tracer.drain();
+    std::cout << "Collected samples: " << samples.size() << "\n";
   });
 
   auto* visualize =

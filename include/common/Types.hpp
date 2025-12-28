@@ -1,6 +1,7 @@
 #pragma once
 #include <libdwarf-2/libdwarf.h>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -64,4 +65,32 @@ struct StructInfo {
   size_t size;
   vector<FieldInfo> fields;
   TypeInfo* self_type;
+};
+
+struct StackFrameEvent {
+  uint64_t function_ip;
+  uint64_t cfa;  // Canonical Frame Address
+  uint64_t callsite;
+  uint32_t pid;
+  uint32_t tid;
+};
+struct CacheLine {
+  uint64_t addr;
+  size_t size{64};
+};
+
+struct DwarfStackObject {
+  std::string function;
+  std::string name;
+  std::string file;
+  uint64_t size;
+  int64_t frame_offset;
+  TypeInfo* type;
+};
+
+struct RuntimeStackObject {
+  uint64_t function_ip;
+  uint64_t cfa;
+  uint64_t callsite;
+  uint64_t pid;
 };
