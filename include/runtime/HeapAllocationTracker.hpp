@@ -35,12 +35,10 @@ public:
     return t;
   }
 
-  /* ---------------- Enable / Disable Tracking ---------------- */
   void enable() { _enabled.store(true, std::memory_order_release); }
   void disable() { _enabled.store(false, std::memory_order_release); }
   bool is_enabled() const { return _enabled.load(std::memory_order_acquire); }
 
-  /* ---------------- Insert ---------------- */
   void register_allocation(void* ptr, size_t size, uintptr_t callsite_ip,
                            AllocationKind kind, int fd = -1) {
     if (!ptr || size == 0 || !_enabled.load(std::memory_order_relaxed)) return;
@@ -65,7 +63,6 @@ public:
     }
   }
 
-  /* ---------------- Remove ---------------- */
   void unregister_allocation(void* ptr) {
     if (!ptr || !_enabled.load(std::memory_order_relaxed)) return;
 
@@ -86,7 +83,6 @@ public:
     }
   }
 
-  /* ---------------- Lookup ---------------- */
   const Allocation* find(uintptr_t addr) const {
     if (!_enabled.load(std::memory_order_relaxed)) return nullptr;
 

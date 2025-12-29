@@ -1,12 +1,9 @@
 #include "runtime/TracerConfig.hpp"
 
-#include <cstring>
 #include <fstream>
 #include <stdexcept>
 
 static uint64_t encode_cache_event(CacheEvent ev, CpuVendor cpu) {
-  using namespace std;
-
   if (cpu == CpuVendor::Intel) {
     // Intel encoding:
     // PERF_TYPE_HW_CACHE
@@ -48,11 +45,11 @@ static uint64_t encode_cache_event(CacheEvent ev, CpuVendor cpu) {
                (PERF_COUNT_HW_CACHE_RESULT_MISS << 16);
 
       default:
-        throw runtime_error("Requested cache event not supported on AMD");
+        throw std::runtime_error("Requested cache event not supported on AMD");
     }
   }
 
-  throw runtime_error("Unknown CPU vendor");
+  throw std::runtime_error("Unknown CPU vendor");
 }
 
 CpuVendor TracerConfig::detect_cpu_vendor() {

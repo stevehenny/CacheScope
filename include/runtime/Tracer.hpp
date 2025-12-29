@@ -27,31 +27,21 @@ public:
   std::vector<MemAccess> drain();
 
 private:
-  // ------------------------------------------------------------
-  // perf event
-  // ------------------------------------------------------------
   int _perf_fd{-1};
   pid_t _pid{-1};
 
-  // ------------------------------------------------------------
-  // mmap'd perf ring buffer
-  // ------------------------------------------------------------
   void* _mmap_buf{nullptr};
   size_t _mmap_size{0};
 
   perf_event_mmap_page* _meta{nullptr};
+  uint64_t _sample_type{0};
+
   uint8_t* _data{nullptr};
 
-  // ------------------------------------------------------------
-  // ring buffer bookkeeping
-  // ------------------------------------------------------------
   size_t _page_size{0};
   size_t _data_pages{0};
   size_t _data_mask{0};
   uint64_t _tail{0};
 
-  // ------------------------------------------------------------
-  // collected samples
-  // ------------------------------------------------------------
   std::vector<MemAccess> _samples;
 };

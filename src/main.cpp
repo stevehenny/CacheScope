@@ -36,9 +36,7 @@ int main(int argc, char* argv[]) {
   analyze->add_option("binary", binary)->required()->check(CLI::ExistingFile);
 
   analyze->callback([&]() {
-    // ------------------------------------------------------------
     // Phase 1: DWARF extraction (parent process)
-    // ------------------------------------------------------------
     Extractor ext{binary};
     ext.create_registry();
 
@@ -58,9 +56,7 @@ int main(int argc, char* argv[]) {
       std::cout << '\n';
     }
 
-    // ------------------------------------------------------------
     // Phase 2: Fork + PERF attach (CORRECTLY SYNCHRONIZED)
-    // ------------------------------------------------------------
     TracerConfig cfg{};
     cfg.event          = CacheEvent::L1D_LOAD;
     cfg.sample_period  = 1000;
@@ -81,7 +77,6 @@ int main(int argc, char* argv[]) {
       _exit(127);
     }
 
-    // Parent
     int status = 0;
     waitpid(child, &status, WUNTRACED);
 
@@ -104,9 +99,7 @@ int main(int argc, char* argv[]) {
       std::cout << "Target exited with code " << WEXITSTATUS(status) << "\n";
     }
 
-    // ------------------------------------------------------------
     // Phase 3: (future) correlate samples → DWARF objects
-    // ------------------------------------------------------------
     auto samples = tracer.drain();
     std::cout << "Collected samples: " << samples.size() << "\n";
     for (auto sample : samples) {

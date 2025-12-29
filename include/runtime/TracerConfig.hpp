@@ -16,9 +16,6 @@ enum class CacheEvent {
 };
 
 struct TracerConfig {
-  // ------------------------------------------------------------
-  // Target behavior
-  // ------------------------------------------------------------
   CacheEvent event;
   uint64_t sample_period{1000};
 
@@ -26,14 +23,8 @@ struct TracerConfig {
   bool exclude_kernel{true};
   bool exclude_hv{true};
 
-  // ------------------------------------------------------------
-  // Derived fields
-  // ------------------------------------------------------------
   CpuVendor cpu{CpuVendor::Unknown};
 
-  // ------------------------------------------------------------
-  // API
-  // ------------------------------------------------------------
   perf_event_attr build_attr() const;
 
   static CpuVendor detect_cpu_vendor();
