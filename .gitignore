@@ -4,3 +4,4 @@ build/
 compile_commands.json
 brainstorm.txt
 project_diagram.txt
+perf.data

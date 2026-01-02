@@ -8,11 +8,11 @@
 enum class CpuVendor { Intel, AMD, Unknown };
 
 enum class CacheEvent {
-  L1D_LOAD,
-  L1D_STORE,
-  LLC_LOAD,
-  LLC_STORE,
-  CACHE_MISS,
+  MEM_LOAD_RETIRED_L1_MISS,
+  MEM_LOAD_RETIRED_L1_HIT,
+  MEM_LOAD_RETIRED_L3_MISS,
+  MEM_LOAD_RETIRED_L3_HIT,
+  MEM_INST_RETIRED_ALL_LOADS,
 };
 
 struct TracerConfig {
