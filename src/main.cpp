@@ -4,13 +4,11 @@
 #include <CLI/CLI.hpp>
 #include <algorithm>
 #include <format>
-#include <fstream>
 #include <iostream>
 #include <optional>
 #include <ranges>
 #include <string>
 #include <string_view>
-#include <unordered_set>
 #include <vector>
 
 #include "dwarf/Extractor.hpp"
