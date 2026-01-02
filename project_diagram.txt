@@ -17,7 +17,8 @@
   │  - Structs/Classes   │   │  - Address / Thread / │
   │  - Field offsets     │   │    Instruction info   │
   │  - Field sizes       │   │  - Load / Store ops   │
-  │  - Padding info      │   │                       │
+  │  - Padding info      │   │  - context switching/
+  │                      |    |    migrations
   └──────────┬───────────┘   └───────────┬───────────┘
              │                           │
              └─────────────┬─────────────┘
