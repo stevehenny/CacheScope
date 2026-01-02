@@ -9,8 +9,6 @@ set(CMAKE_BUILD_TYPE Debug)
 # Enable generation of compile_commands.json
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Compiler flags for debug builds (frame pointer + instrumentation)
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -finstrument-functions")
 
 # CLI11
 find_package(CLI11 CONFIG REQUIRED)

@@ -2,6 +2,7 @@
 #include <libdwarf-2/libdwarf.h>
 
 #include <cstdint>
+#include <format>
 #include <string>
 #include <vector>
 
@@ -75,8 +76,10 @@ struct StackFrameEvent {
   uint32_t tid;
 };
 struct CacheLine {
-  uint64_t addr;
-  size_t size{64};
+  uint64_t base_addr = 0;
+  std::vector<uint32_t> tids;
+  std::vector<uint64_t> addrs;
+  size_t sample_count = 0;
 };
 
 struct DwarfStackObject {
@@ -93,4 +96,22 @@ struct RuntimeStackObject {
   uint64_t cfa;
   uint64_t callsite;
   uint64_t pid;
+};
+
+struct PerfSample {
+  uint32_t tid;
+  uint32_t pid;
+  uint32_t cpu;
+  uint64_t ip;
+  uint64_t addr;
+  uint64_t timestamp;
+  std::string symbol;
+
+  friend std::ostream& operator<<(std::ostream& os, const PerfSample& s) {
+    return os << std::format(
+             "TID: {}\nPID: {}\nCPU: {}\nIP: 0x{:x}\nADDR: 0x{:x}\n"
+             "TIME: {}\nSYM: {}\n",
+             s.tid, s.pid, s.cpu, s.ip, s.addr, s.timestamp,
+             s.symbol.empty() ? "<unknown>" : s.symbol);
+  }
 };
