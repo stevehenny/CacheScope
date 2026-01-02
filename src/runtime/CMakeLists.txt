@@ -1,6 +1,4 @@
 add_library(runtime
-Tracer.cpp
-TracerConfig.cpp
 PipeStream.cpp
 FalseSharingAnalysis.cpp
 SampleStats.cpp

@@ -16,7 +16,6 @@ PipeStream::~PipeStream() {
   if (pipe_) pclose(pipe_);
 }
 
-// Disable copy, enable move
 PipeStream::PipeStream(PipeStream&& other) noexcept : pipe_(other.pipe_) {
   other.pipe_ = nullptr;
 }
