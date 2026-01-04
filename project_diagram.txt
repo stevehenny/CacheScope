@@ -41,3 +41,11 @@
                    │  - Cache Line   │
                    │   visualizations│
                    └─────────────────┘
+
+
+
+Detecting false sharing:
+
+1. Look for hot cache lines shared among tids
+2. If a lot of tids are writing to the same cache line, and are running on separate cpus, raise red flag
+3. No kernel memory cache lines are candidates for false_sharing (user has little control over that)

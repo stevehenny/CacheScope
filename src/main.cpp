@@ -5,12 +5,14 @@
 #include <algorithm>
 #include <format>
 #include <iostream>
+#include <numbers>
 #include <optional>
 #include <ranges>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "common/Types.hpp"
 #include "dwarf/Extractor.hpp"
 #include "runtime/FalseSharingAnalysis.hpp"
 #include "runtime/PipeStream.hpp"
@@ -67,6 +69,16 @@ static std::optional<PerfSample> parse_perf_line(std::string_view line) {
   s.cpu = std::stoul(std::string(toks[idx].substr(1, toks[idx].size() - 2)));
   idx++;
 
+  // event types
+  std::string event_str =
+    std::string(toks[idx].substr(0, toks[idx].size() - 1));
+  idx++;
+  if (event_str == "mem-stores:pp")
+    s.event_type = SampleType::CACHE_STORE;
+
+  else if (event_str == "mem-loads:pp")
+    s.event_type = SampleType::CACHE_LOAD;
+
   // ip
   s.ip = std::stoull(std::string(toks[idx]), nullptr, 16);
   idx++;
@@ -114,7 +126,8 @@ static bool run_perf_record(const std::string& binary,
 // Parse perf script output
 std::vector<PerfSample> parse_perf_data(const std::string& perf_data_file) {
   std::string cmd = std::format(
-    "perf script -i {} -F tid,pid,cpu,ip,addr,sym 2>/dev/null", perf_data_file);
+    "perf script -i {} -F tid,pid,cpu,ip,addr,sym,event 2>/dev/null",
+    perf_data_file);
 
   PipeStream pipe(cmd);
   auto lines = pipe.read_lines();
@@ -156,14 +169,14 @@ int main(int argc, char* argv[]) {
   app.add_flag("-v,--verbose", verbose, "Enable verbose debugging output");
 
   std::string binary;
-  std::string output_file = "perf.data";
-  std::string event       = "mem-loads:pp";
-  int sample_rate         = 10000;
+  std::string output_file    = "perf.data";
+  std::string default_events = "mem-loads:pp,mem-stores:pp,cache-references";
+  int sample_rate            = 10000;
 
   auto* analyze = app.add_subcommand("analyze", "Analyze cache behavior");
   analyze->add_option("binary", binary)->required()->check(CLI::ExistingFile);
   analyze->add_option("-o,--output", output_file, "Output perf data file");
-  analyze->add_option("-e,--event", event, "Perf event to record");
+  analyze->add_option("-e,--event", default_events, "Perf event to record");
   analyze->add_option("-c,--count", sample_rate, "Sample period");
 
   analyze->callback([&]() {
@@ -185,9 +198,9 @@ int main(int argc, char* argv[]) {
     // Phase 2: Run perf record
     std::cout << "=== Phase 2: Performance Recording ===\n";
     std::cout << std::format("Recording {} with event '{}' (period={})\n",
-                             binary, event, sample_rate);
+                             binary, default_events, sample_rate);
 
-    if (!run_perf_record(binary, output_file, event, sample_rate)) {
+    if (!run_perf_record(binary, output_file, default_events, sample_rate)) {
       std::cerr << "Perf recording failed\n";
       return;
     }

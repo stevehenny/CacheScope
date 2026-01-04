@@ -76,10 +76,12 @@ struct StackFrameEvent {
   uint32_t tid;
 };
 struct CacheLine {
-  uint64_t base_addr = 0;
+  uint64_t base_addr{};
   std::vector<uint32_t> tids;
   std::vector<uint64_t> addrs;
-  size_t sample_count = 0;
+  size_t sample_count{};
+  size_t sample_reads{};
+  size_t sample_writes{};
 };
 
 struct DwarfStackObject {
@@ -98,20 +100,25 @@ struct RuntimeStackObject {
   uint64_t pid;
 };
 
+enum class SampleType {
+  CACHE_LOAD,
+  CACHE_STORE,
+};
 struct PerfSample {
   uint32_t tid;
   uint32_t pid;
   uint32_t cpu;
   uint64_t ip;
   uint64_t addr;
-  uint64_t timestamp;
+  uint64_t time_stamp;
+  SampleType event_type;
   std::string symbol;
 
   friend std::ostream& operator<<(std::ostream& os, const PerfSample& s) {
     return os << std::format(
              "TID: {}\nPID: {}\nCPU: {}\nIP: 0x{:x}\nADDR: 0x{:x}\n"
              "TIME: {}\nSYM: {}\n",
-             s.tid, s.pid, s.cpu, s.ip, s.addr, s.timestamp,
+             s.tid, s.pid, s.cpu, s.ip, s.addr, s.time_stamp,
              s.symbol.empty() ? "<unknown>" : s.symbol);
   }
 };
