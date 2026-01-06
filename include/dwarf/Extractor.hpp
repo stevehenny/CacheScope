@@ -1,7 +1,7 @@
 #pragma once
 
-#include <libdwarf-2/dwarf.h>
-#include <libdwarf-2/libdwarf.h>
+#include <libdwarf/dwarf.h>
+#include <libdwarf/libdwarf.h>
 
 #include <memory>
 #include <string>
