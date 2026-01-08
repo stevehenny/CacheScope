@@ -3,6 +3,8 @@
 
 #include <CLI/CLI.hpp>
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <format>
 #include <iostream>
 #include <numbers>
@@ -17,6 +19,35 @@
 #include "runtime/FalseSharingAnalysis.hpp"
 #include "runtime/PipeStream.hpp"
 #include "runtime/SampleStats.hpp"
+
+// Detect CPU vendor from /proc/cpuinfo
+static std::string detect_cpu_vendor() {
+  std::ifstream cpuinfo("/proc/cpuinfo");
+  std::string line;
+  while (std::getline(cpuinfo, line)) {
+    if (line.find("vendor_id") != std::string::npos) {
+      if (line.find("GenuineIntel") != std::string::npos)
+        return "intel";
+      if (line.find("AuthenticAMD") != std::string::npos)
+        return "amd";
+    }
+  }
+  return "unknown";
+}
+
+// Get appropriate memory sampling events for the CPU
+static std::string get_default_mem_events() {
+  std::string vendor = detect_cpu_vendor();
+  if (vendor == "intel") {
+    // Intel PEBS events
+    return "mem-loads:pp,mem-stores:pp";
+  } else if (vendor == "amd") {
+    // AMD IBS op sampling captures memory accesses
+    return "ibs_op//";
+  }
+  // Fallback to generic events that should work on most x86
+  return "cpu-cycles";
+}
 
 static inline std::string_view trim(std::string_view sv) {
   auto b = sv.find_first_not_of(" \t\n");
@@ -69,15 +100,42 @@ static std::optional<PerfSample> parse_perf_line(std::string_view line) {
   s.cpu = std::stoul(std::string(toks[idx].substr(1, toks[idx].size() - 2)));
   idx++;
 
-  // event types
-  std::string event_str =
-    std::string(toks[idx].substr(0, toks[idx].size() - 1));
-  idx++;
-  if (event_str == "mem-stores:pp")
-    s.event_type = SampleType::CACHE_STORE;
+  // Optional time token (when perf script -F includes time)
+  // Usually formatted like "12345.678901" or "12345.678901:".
+  if (idx < toks.size()) {
+    auto tt = toks[idx];
+    if (!tt.empty() && tt.back() == ':') tt = tt.substr(0, tt.size() - 1);
 
-  else if (event_str == "mem-loads:pp")
+    if (tt.find_first_not_of("0123456789.") == std::string_view::npos &&
+        tt.find('.') != std::string_view::npos) {
+      auto dot = tt.find('.');
+      uint64_t secs = 0, nsecs = 0;
+      try {
+        secs = std::stoull(std::string(tt.substr(0, dot)));
+        auto frac = std::string(tt.substr(dot + 1));
+        if (frac.size() > 9) frac.resize(9);
+        while (frac.size() < 9) frac.push_back('0');
+        nsecs = std::stoull(frac);
+      } catch (...) {
+        secs = 0;
+        nsecs = 0;
+      }
+      s.time_stamp = secs * 1000000000ULL + nsecs;
+      idx++;
+    }
+  }
+
+  // event types (often ends with ':')
+  std::string event_str = std::string(toks[idx]);
+  if (!event_str.empty() && event_str.back() == ':') event_str.pop_back();
+  idx++;
+
+  if (event_str == "mem-stores:pp" || event_str.find("store") != std::string::npos)
+    s.event_type = SampleType::CACHE_STORE;
+  else if (event_str == "mem-loads:pp" || event_str.find("load") != std::string::npos)
     s.event_type = SampleType::CACHE_LOAD;
+  else
+    s.event_type = SampleType::CACHE_LOAD;  // Generic / IBS: treat as access
 
   // ip
   s.ip = std::stoull(std::string(toks[idx]), nullptr, 16);
@@ -87,10 +145,16 @@ static std::optional<PerfSample> parse_perf_line(std::string_view line) {
   s.addr = std::stoull(std::string(toks[idx]), nullptr, 16);
   idx++;
 
-  // symbol = rest of line
-  size_t sym_pos = line.find(toks[idx]);
-  if (sym_pos != std::string_view::npos) {
-    s.symbol = std::string(trim(line.substr(sym_pos)));
+  // sym
+  if (idx < toks.size()) {
+    s.symbol = std::string(toks[idx]);
+    idx++;
+  }
+
+  // dso
+  if (idx < toks.size()) {
+    s.dso = std::string(toks[idx]);
+    idx++;
   }
 
   return s;
@@ -126,7 +190,7 @@ static bool run_perf_record(const std::string& binary,
 // Parse perf script output
 std::vector<PerfSample> parse_perf_data(const std::string& perf_data_file) {
   std::string cmd = std::format(
-    "perf script -i {} -F tid,pid,cpu,ip,addr,sym,event 2>/dev/null",
+    "perf script -i {} -F tid,pid,cpu,time,event,ip,addr,sym,dso 2>/dev/null",
     perf_data_file);
 
   PipeStream pipe(cmd);
@@ -146,7 +210,7 @@ std::vector<PerfSample> parse_perf_data(const std::string& perf_data_file) {
 
 auto parse_perf_data_ranges(const std::string& perf_data_file) {
   std::string cmd = std::format(
-    "perf script -i {} -F tid,pid,cpu,ip,addr,sym 2>/dev/null", perf_data_file);
+    "perf script -i {} -F tid,pid,cpu,time,ip,addr,sym,dso 2>/dev/null", perf_data_file);
 
   PipeStream pipe(cmd);
   auto lines = pipe.read_lines();
@@ -170,7 +234,7 @@ int main(int argc, char* argv[]) {
 
   std::string binary;
   std::string output_file    = "perf.data";
-  std::string default_events = "mem-loads:pp,mem-stores:pp,cache-references";
+  std::string default_events = get_default_mem_events();
   int sample_rate            = 10000;
 
   auto* analyze = app.add_subcommand("analyze", "Analyze cache behavior");
@@ -212,11 +276,27 @@ int main(int argc, char* argv[]) {
 
     auto samples = parse_perf_data(output_file);
 
+    // Filter to samples attributed to the target binary (reduces libc/pthread noise).
+    const auto bin_name = std::filesystem::path(binary).filename().string();
+    size_t before = samples.size();
+    std::erase_if(samples, [&](const PerfSample& s) {
+      if (s.dso.empty()) return false;  // keep unknown
+      if (s.dso.find(bin_name) != std::string::npos) return false;
+      if (s.dso.find(binary) != std::string::npos) return false;
+      return true;
+    });
+    if (verbose) {
+      std::cout << std::format("Filtered samples by DSO: {} -> {}\n", before,
+                               samples.size());
+    }
+
     if (samples.empty()) {
       std::cerr << "No samples collected. Try:\n"
                 << "  - Lower sample rate (-c)\n"
-                << "  - Different event (-e mem-loads)\n"
-                << "  - Check: perf list | grep mem\n";
+                << "  - Different event (-e)\n"
+                << "  - Check available events: perf list\n"
+                << "  - Intel: mem-loads:pp, mem-stores:pp\n"
+                << "  - AMD: cpu/ibs_op/pp\n";
       return;
     }
 

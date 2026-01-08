@@ -82,6 +82,18 @@ struct CacheLine {
   size_t sample_count{};
   size_t sample_reads{};
   size_t sample_writes{};
+
+  // "Bouncing" heuristic: how often consecutive touches of this line come from
+  // different threads (higher suggests cache-line ping-pong / false sharing).
+  size_t thread_switches{};
+  double bounce_score{};
+
+  // Offset overlap heuristic: false sharing often looks like different threads
+  // repeatedly touching different offsets within the same cache line.
+  size_t shared_offset_count{};  // offsets touched by >=2 threads
+  size_t total_offset_count{};   // distinct offsets touched by any thread
+  size_t unique_top_offsets{};   // distinct "most frequent" offsets per thread
+  double private_offset_fraction{};  // 1 - shared/total
 };
 
 struct DwarfStackObject {
@@ -110,15 +122,17 @@ struct PerfSample {
   uint32_t cpu;
   uint64_t ip;
   uint64_t addr;
-  uint64_t time_stamp;
+  uint64_t time_stamp{};
   SampleType event_type;
   std::string symbol;
+  std::string dso;
 
   friend std::ostream& operator<<(std::ostream& os, const PerfSample& s) {
     return os << std::format(
              "TID: {}\nPID: {}\nCPU: {}\nIP: 0x{:x}\nADDR: 0x{:x}\n"
-             "TIME: {}\nSYM: {}\n",
+             "TIME: {}\nSYM: {}\nDSO: {}\n",
              s.tid, s.pid, s.cpu, s.ip, s.addr, s.time_stamp,
-             s.symbol.empty() ? "<unknown>" : s.symbol);
+             s.symbol.empty() ? "<unknown>" : s.symbol,
+             s.dso.empty() ? "<unknown>" : s.dso);
   }
 };
