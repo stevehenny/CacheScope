@@ -5,6 +5,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <unordered_map>
 
@@ -126,6 +127,44 @@ static bool extract_fbreg_offset(Dwarf_Debug dbg, Dwarf_Die die,
   if (shift < 64 && (value & (1LL << (shift - 1)))) value |= (-1LL) << shift;
 
   out_offset = value;
+  dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
+  return true;
+}
+
+static bool extract_addr_location(Dwarf_Debug dbg, Dwarf_Die die,
+                                  uint64_t& out_addr) {
+  Dwarf_Attribute attr = nullptr;
+  if (dwarf_attr(die, DW_AT_location, &attr, nullptr) != DW_DLV_OK) return false;
+
+  Dwarf_Unsigned exprlen = 0;
+  Dwarf_Ptr expr         = nullptr;
+  if (dwarf_formexprloc(attr, &exprlen, &expr, nullptr) != DW_DLV_OK) {
+    dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
+    return false;
+  }
+
+  const uint8_t* p   = static_cast<const uint8_t*>(expr);
+  const uint8_t* end = p + exprlen;
+
+  if (p >= end || *p != DW_OP_addr) {
+    dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
+    return false;
+  }
+  ++p;
+
+  Dwarf_Half addr_size = 0;
+  dwarf_get_address_size(dbg, &addr_size, nullptr);
+  if (addr_size == 0) addr_size = 8;
+  if (p + addr_size > end) {
+    dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
+    return false;
+  }
+
+  uint64_t v = 0;
+  // DWARF on x86_64 Linux is little-endian; memcpy is fine here.
+  std::memcpy(&v, p, std::min<size_t>(addr_size, sizeof(v)));
+  out_addr = v;
+
   dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
   return true;
 }
@@ -303,18 +342,50 @@ TypeInfo* Extractor::get_or_create_type(Dwarf_Die die) {
 void Extractor::process_stack_variable(Dwarf_Die die,
                                        const std::string& function) {
   int64_t offset = 0;
-  if (!extract_fbreg_offset(context.dbg(), die, offset)) return;
+  if (extract_fbreg_offset(context.dbg(), die, offset)) {
+    DwarfStackObject obj;
+    obj.function     = function;
+    obj.name         = die_name(context.dbg(), die);
+    obj.frame_offset = offset;
 
-  DwarfStackObject obj;
-  obj.function     = function;
-  obj.name         = die_name(context.dbg(), die);
-  obj.frame_offset = offset;
+    Dwarf_Die type_die = resolve_type_die(context.dbg(), die);
+    obj.type           = get_or_create_type(type_die);
+    obj.size           = obj.type ? obj.type->size : 0;
+
+    if (obj.name != "<anonymous>") stack_objects.push_back(obj);
+    return;
+  }
+
+  // Function-local 'static' variables have fixed lifetime and are typically
+  // described via DW_OP_addr (not fbreg). Treat them as globals for attribution.
+  uint64_t addr = 0;
+  if (!extract_addr_location(context.dbg(), die, addr)) return;
+
+  DwarfGlobalObject obj;
+  obj.name = function + "::" + die_name(context.dbg(), die);
+  obj.addr = addr;
 
   Dwarf_Die type_die = resolve_type_die(context.dbg(), die);
   obj.type           = get_or_create_type(type_die);
   obj.size           = obj.type ? obj.type->size : 0;
 
-  if (obj.name != "<anonymous>") stack_objects.push_back(obj);
+  if (obj.name.find("<anonymous>") == std::string::npos)
+    global_objects.push_back(obj);
+}
+
+void Extractor::process_global_variable(Dwarf_Die die) {
+  uint64_t addr = 0;
+  if (!extract_addr_location(context.dbg(), die, addr)) return;
+
+  DwarfGlobalObject obj;
+  obj.name = die_name(context.dbg(), die);
+  obj.addr = addr;
+
+  Dwarf_Die type_die = resolve_type_die(context.dbg(), die);
+  obj.type           = get_or_create_type(type_die);
+  obj.size           = obj.type ? obj.type->size : 0;
+
+  if (obj.name != "<anonymous>") global_objects.push_back(obj);
 }
 
 /* ============================================================
@@ -374,6 +445,16 @@ void Extractor::process_struct_die(Dwarf_Die die) {
       auto field  = std::make_unique<FieldInfo>();
       field->name = die_name(context.dbg(), cur);
 
+      // Member offset within the struct
+      Dwarf_Attribute off_attr = nullptr;
+      Dwarf_Unsigned off = 0;
+      if (dwarf_attr(cur, DW_AT_data_member_location, &off_attr, nullptr) ==
+            DW_DLV_OK &&
+          dwarf_formudata(off_attr, &off, nullptr) == DW_DLV_OK) {
+        field->offset = static_cast<size_t>(off);
+      }
+      if (off_attr) dwarf_dealloc(context.dbg(), off_attr, DW_DLA_ATTR);
+
       Dwarf_Die type_die = resolve_type_die(context.dbg(), cur);
       field->type        = get_or_create_type(type_die);
       field->size        = field->type ? field->type->size : 0;
@@ -409,6 +490,9 @@ void Extractor::process_die_tree(Dwarf_Die die) {
   else if (tag == DW_TAG_subprogram) {
     process_subprogram_die(die);
     return;
+  } else if (tag == DW_TAG_variable) {
+    // CU-scope global/static variables
+    process_global_variable(die);
   }
 
   Dwarf_Die child = nullptr;
@@ -430,6 +514,10 @@ void Extractor::process_die_tree(Dwarf_Die die) {
 
 const std::vector<DwarfStackObject>& Extractor::get_stack_objects() const {
   return stack_objects;
+}
+
+const std::vector<DwarfGlobalObject>& Extractor::get_global_objects() const {
+  return global_objects;
 }
 
 const Registry<std::string, StructInfo>& Extractor::get_registry() const {

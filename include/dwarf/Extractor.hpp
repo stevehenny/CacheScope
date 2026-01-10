@@ -24,6 +24,7 @@ public:
   const std::vector<std::unique_ptr<FieldInfo>>& get_owned_fields() const;
 
   const std::vector<DwarfStackObject>& get_stack_objects() const;
+  const std::vector<DwarfGlobalObject>& get_global_objects() const;
 
 private:
   void process_die_tree(Dwarf_Die die);
@@ -35,6 +36,7 @@ private:
   void process_subprogram_die(Dwarf_Die die);
   void process_stack_variable(Dwarf_Die var_die,
                               const std::string& function_name);
+  void process_global_variable(Dwarf_Die var_die);
 
   DwarfContext context;
   Registry<std::string, StructInfo> registry;
@@ -42,4 +44,5 @@ private:
   std::unordered_map<Dwarf_Off, std::unique_ptr<TypeInfo>> types;
   std::vector<std::unique_ptr<FieldInfo>> owned_fields;
   std::vector<DwarfStackObject> stack_objects;
+  std::vector<DwarfGlobalObject> global_objects;
 };

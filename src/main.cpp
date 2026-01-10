@@ -3,9 +3,11 @@
 
 #include <CLI/CLI.hpp>
 #include <algorithm>
+#include <array>
+#include <cstdio>
 #include <filesystem>
-#include <fstream>
 #include <format>
+#include <fstream>
 #include <iostream>
 #include <numbers>
 #include <optional>
@@ -26,10 +28,8 @@ static std::string detect_cpu_vendor() {
   std::string line;
   while (std::getline(cpuinfo, line)) {
     if (line.find("vendor_id") != std::string::npos) {
-      if (line.find("GenuineIntel") != std::string::npos)
-        return "intel";
-      if (line.find("AuthenticAMD") != std::string::npos)
-        return "amd";
+      if (line.find("GenuineIntel") != std::string::npos) return "intel";
+      if (line.find("AuthenticAMD") != std::string::npos) return "amd";
     }
   }
   return "unknown";
@@ -55,6 +55,77 @@ static inline std::string_view trim(std::string_view sv) {
   if (b == std::string_view::npos) return {};
   return sv.substr(b, e - b + 1);
 }
+
+static std::optional<uint64_t> parse_hex_u64(std::string_view sv) {
+  sv = trim(sv);
+  if (sv.starts_with("0x")) sv.remove_prefix(2);
+  if (sv.empty()) return std::nullopt;
+  uint64_t v = 0;
+  // try {
+  v = std::stoull(std::string(sv), nullptr, 16);
+  // } catch (...) {
+  //   return std::nullopt;
+  // }
+  return v;
+}
+
+static std::optional<uint64_t> get_load_bias_from_perf_mmaps(
+  const std::string& perf_data_file, const std::string& binary_path,
+  uint32_t pid) {
+  const auto bin_name = std::filesystem::path(binary_path).filename().string();
+  std::string cmd     = std::format(
+    "perf script --show-mmap-events --pid {} -i {} 2>/dev/null | head -n 5000",
+    pid, perf_data_file);
+
+  FILE* pipe = popen(cmd.c_str(), "r");
+  if (!pipe) return std::nullopt;
+
+  std::optional<uint64_t> any_start;
+  std::array<char, 4096> buffer{};
+  int count{};
+  bool found = false;
+
+  while (fgets(buffer.data(), buffer.size(), pipe)) {
+    ++count;
+    std::string line(buffer.data());
+    if (line.find("PERF_RECORD_MMAP") == std::string::npos) continue;
+    if (line.find(binary_path) == std::string::npos &&
+        line.find(bin_name) == std::string::npos)
+      continue;
+
+    auto lb = line.find('[');
+    auto rb = line.find(']', lb);
+    if (lb == std::string::npos || rb == std::string::npos) continue;
+
+    auto inside    = std::string_view(line).substr(lb + 1, rb - lb - 1);
+    auto start_end = inside.find('(');
+    if (start_end == std::string::npos) continue;
+    auto at_pos = inside.find('@');
+    if (at_pos == std::string::npos) continue;
+
+    auto start_sv = trim(inside.substr(0, start_end));
+    auto pgoff_sv = trim(inside.substr(at_pos + 1));
+    auto sp       = pgoff_sv.find(' ');
+    if (sp != std::string_view::npos) pgoff_sv = pgoff_sv.substr(0, sp);
+
+    auto start = parse_hex_u64(start_sv);
+    auto pgoff = parse_hex_u64(pgoff_sv);
+    if (!start || !pgoff) continue;
+
+    any_start = *start;
+    if (*pgoff == 0) {
+      found = true;
+      break;
+    }
+  }
+
+  int status = pclose(pipe);
+  (void)status;  // Optionally handle status
+
+  if (found) return any_start;
+  return any_start;
+}
+
 // Parse a single perf script line
 static std::optional<PerfSample> parse_perf_line(std::string_view line) {
   line = trim(line);
@@ -108,16 +179,16 @@ static std::optional<PerfSample> parse_perf_line(std::string_view line) {
 
     if (tt.find_first_not_of("0123456789.") == std::string_view::npos &&
         tt.find('.') != std::string_view::npos) {
-      auto dot = tt.find('.');
+      auto dot      = tt.find('.');
       uint64_t secs = 0, nsecs = 0;
       try {
-        secs = std::stoull(std::string(tt.substr(0, dot)));
+        secs      = std::stoull(std::string(tt.substr(0, dot)));
         auto frac = std::string(tt.substr(dot + 1));
         if (frac.size() > 9) frac.resize(9);
         while (frac.size() < 9) frac.push_back('0');
         nsecs = std::stoull(frac);
       } catch (...) {
-        secs = 0;
+        secs  = 0;
         nsecs = 0;
       }
       s.time_stamp = secs * 1000000000ULL + nsecs;
@@ -130,9 +201,11 @@ static std::optional<PerfSample> parse_perf_line(std::string_view line) {
   if (!event_str.empty() && event_str.back() == ':') event_str.pop_back();
   idx++;
 
-  if (event_str == "mem-stores:pp" || event_str.find("store") != std::string::npos)
+  if (event_str == "mem-stores:pp" ||
+      event_str.find("store") != std::string::npos)
     s.event_type = SampleType::CACHE_STORE;
-  else if (event_str == "mem-loads:pp" || event_str.find("load") != std::string::npos)
+  else if (event_str == "mem-loads:pp" ||
+           event_str.find("load") != std::string::npos)
     s.event_type = SampleType::CACHE_LOAD;
   else
     s.event_type = SampleType::CACHE_LOAD;  // Generic / IBS: treat as access
@@ -210,7 +283,8 @@ std::vector<PerfSample> parse_perf_data(const std::string& perf_data_file) {
 
 auto parse_perf_data_ranges(const std::string& perf_data_file) {
   std::string cmd = std::format(
-    "perf script -i {} -F tid,pid,cpu,time,ip,addr,sym,dso 2>/dev/null", perf_data_file);
+    "perf script -i {} -F tid,pid,cpu,time,ip,addr,sym,dso 2>/dev/null",
+    perf_data_file);
 
   PipeStream pipe(cmd);
   auto lines = pipe.read_lines();
@@ -276,9 +350,10 @@ int main(int argc, char* argv[]) {
 
     auto samples = parse_perf_data(output_file);
 
-    // Filter to samples attributed to the target binary (reduces libc/pthread noise).
+    // Filter to samples attributed to the target binary (reduces libc/pthread
+    // noise).
     const auto bin_name = std::filesystem::path(binary).filename().string();
-    size_t before = samples.size();
+    size_t before       = samples.size();
     std::erase_if(samples, [&](const PerfSample& s) {
       if (s.dso.empty()) return false;  // keep unknown
       if (s.dso.find(bin_name) != std::string::npos) return false;
@@ -296,7 +371,7 @@ int main(int argc, char* argv[]) {
                 << "  - Different event (-e)\n"
                 << "  - Check available events: perf list\n"
                 << "  - Intel: mem-loads:pp, mem-stores:pp\n"
-                << "  - AMD: cpu/ibs_op/pp\n";
+                << "  - AMD: ibs_op//\n";
       return;
     }
 
@@ -316,9 +391,8 @@ int main(int argc, char* argv[]) {
     auto hot_lines = FalseSharingAnalysis::find_hot_cache_lines(samples);
     FalseSharingAnalysis::print(hot_lines);
 
-    // Phase 5: Correlate with DWARF (future)
-    std::cout << "=== Phase 5: Symbol Correlation ===\n";
-    std::cout << "(TODO: Match addresses to stack variables)\n";
+    // Phase 5: Static attribution (globals)
+    std::cout << "=== Phase 5: Static Attribution ===\n";
   });
 
   CLI11_PARSE(app, argc, argv);

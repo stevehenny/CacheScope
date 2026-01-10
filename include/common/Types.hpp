@@ -105,6 +105,14 @@ struct DwarfStackObject {
   TypeInfo* type;
 };
 
+struct DwarfGlobalObject {
+  std::string name;
+  std::string file;
+  uint64_t size;
+  uint64_t addr;  // link-time VMA (DW_OP_addr)
+  TypeInfo* type;
+};
+
 struct RuntimeStackObject {
   uint64_t function_ip;
   uint64_t cfa;
