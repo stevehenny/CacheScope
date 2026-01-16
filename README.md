@@ -58,3 +58,10 @@ cd CacheScope
 mkdir build && cd build
 cmake ..
 make
+```
+
+### Notes for stack-variable attribution
+
+To get non-zero **Stack-attributed samples**, build the *target program you are analyzing* with debug info (`-g`) and avoid stripping symbols.
+
+CacheScope uses DWARF CFI (`.eh_frame`/`.debug_frame`) to compute CFA at each sample, so frame pointers are not required.

@@ -130,6 +130,8 @@ struct PerfSample {
   uint32_t cpu;
   uint64_t ip;
   uint64_t addr;
+  uint64_t sp{};  // sampled user stack pointer (perf --user-regs=sp)
+  uint64_t bp{};  // sampled user frame pointer (perf --user-regs=bp)
   uint64_t time_stamp{};
   SampleType event_type;
   std::string symbol;
@@ -137,10 +139,25 @@ struct PerfSample {
 
   friend std::ostream& operator<<(std::ostream& os, const PerfSample& s) {
     return os << std::format(
-             "TID: {}\nPID: {}\nCPU: {}\nIP: 0x{:x}\nADDR: 0x{:x}\n"
+             "TID: {}\nPID: {}\nCPU: {}\nIP: 0x{:x}\nADDR: 0x{:x}\nSP: 0x{:x}\nBP: 0x{:x}\n"
              "TIME: {}\nSYM: {}\nDSO: {}\n",
-             s.tid, s.pid, s.cpu, s.ip, s.addr, s.time_stamp,
+             s.tid, s.pid, s.cpu, s.ip, s.addr, s.sp, s.bp, s.time_stamp,
              s.symbol.empty() ? "<unknown>" : s.symbol,
              s.dso.empty() ? "<unknown>" : s.dso);
   }
+};
+
+struct ResolvedVariable {
+  std::string name;
+  std::string type_name;
+  uint64_t address;
+  size_t size;
+  int64_t offset;
+  enum class Kind { Global, Stack, TLS } kind;
+};
+
+struct StaticRange {
+  uint64_t start;
+  uint64_t end;
+  DwarfGlobalObject* obj;
 };
