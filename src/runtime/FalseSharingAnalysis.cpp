@@ -19,14 +19,14 @@ static constexpr size_t MIN_UNIQUE_TOP_OFFSETS{2};
 
 std::vector<CacheLine> FalseSharingAnalysis::find_hot_cache_lines(
   const std::vector<PerfSample>& samples) {
-  std::unordered_map<uint64_t, CacheLine> cache_lines;
+  std::unordered_map<int64_t, CacheLine> cache_lines;
 
   // Pass 1: aggregate per cache line (counts, tids, offsets)
   for (const auto& s : samples) {
     if (s.addr == 0) continue;
 
-    uint64_t base = (s.addr / CACHE_LINE_SIZE) * CACHE_LINE_SIZE;
-    auto& line    = cache_lines[base];
+    int64_t base = (s.addr / CACHE_LINE_SIZE) * CACHE_LINE_SIZE;
+    auto& line   = cache_lines[base];
 
     line.base_addr = base;
     line.tids.push_back(s.tid);
@@ -47,11 +47,11 @@ std::vector<CacheLine> FalseSharingAnalysis::find_hot_cache_lines(
   // candidate lines. This avoids inflated switching due to cross-CPU
   // interleaving in perf script output.
   struct Touch {
-    uint64_t t;
+    int64_t t;
     uint32_t tid;
     uint8_t off;
   };
-  std::unordered_map<uint64_t, std::vector<Touch>> seq;
+  std::unordered_map<int64_t, std::vector<Touch>> seq;
   seq.reserve(cache_lines.size());
 
   for (auto& [base, line] : cache_lines) {
@@ -62,7 +62,7 @@ std::vector<CacheLine> FalseSharingAnalysis::find_hot_cache_lines(
     const auto unique_tid_count =
       static_cast<size_t>(std::distance(line.tids.begin(), tid_it));
 
-    std::vector<uint64_t> offsets;
+    std::vector<int64_t> offsets;
     offsets.reserve(line.addrs.size());
     for (auto a : line.addrs) offsets.push_back(a - line.base_addr);
     std::sort(offsets.begin(), offsets.end());
@@ -77,8 +77,8 @@ std::vector<CacheLine> FalseSharingAnalysis::find_hot_cache_lines(
   if (!seq.empty()) {
     for (const auto& s : samples) {
       if (s.addr == 0) continue;
-      uint64_t base = (s.addr / CACHE_LINE_SIZE) * CACHE_LINE_SIZE;
-      auto it       = seq.find(base);
+      int64_t base = (s.addr / CACHE_LINE_SIZE) * CACHE_LINE_SIZE;
+      auto it      = seq.find(base);
       if (it == seq.end()) continue;
       const uint8_t off = static_cast<uint8_t>(s.addr - base);
       it->second.push_back(Touch{s.time_stamp, s.tid, off});
@@ -175,7 +175,7 @@ std::vector<CacheLine> FalseSharingAnalysis::find_hot_cache_lines(
     unique_tids.erase(std::unique(unique_tids.begin(), unique_tids.end()),
                       unique_tids.end());
 
-    std::vector<uint64_t> offsets;
+    std::vector<int64_t> offsets;
     offsets.reserve(line.addrs.size());
     for (auto a : line.addrs) offsets.push_back(a - line.base_addr);
     std::sort(offsets.begin(), offsets.end());
@@ -229,7 +229,7 @@ void FalseSharingAnalysis::print(const std::vector<CacheLine>& hot_lines,
                       unique_tids.end());
     if (unique_tids.size() <= 1) continue;
 
-    std::vector<uint64_t> offsets;
+    std::vector<int64_t> offsets;
     offsets.reserve(line.addrs.size());
     for (auto a : line.addrs) offsets.push_back(a - line.base_addr);
     std::sort(offsets.begin(), offsets.end());

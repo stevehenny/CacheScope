@@ -69,16 +69,16 @@ struct StructInfo {
 };
 
 struct StackFrameEvent {
-  uint64_t function_ip;
-  uint64_t cfa;  // Canonical Frame Address
-  uint64_t callsite;
+  int64_t function_ip;
+  int64_t cfa;  // Canonical Frame Address
+  int64_t callsite;
   uint32_t pid;
   uint32_t tid;
 };
 struct CacheLine {
-  uint64_t base_addr{};
+  int64_t base_addr{};
   std::vector<uint32_t> tids;
-  std::vector<uint64_t> addrs;
+  std::vector<int64_t> addrs;
   size_t sample_count{};
   size_t sample_reads{};
   size_t sample_writes{};
@@ -100,7 +100,7 @@ struct DwarfStackObject {
   std::string function;
   std::string name;
   std::string file;
-  uint64_t size;
+  int64_t size;
   int64_t frame_offset;
   TypeInfo* type;
 };
@@ -108,16 +108,16 @@ struct DwarfStackObject {
 struct DwarfGlobalObject {
   std::string name;
   std::string file;
-  uint64_t size;
-  uint64_t addr;  // link-time VMA (DW_OP_addr)
+  int64_t size;
+  int64_t addr;  // link-time VMA (DW_OP_addr)
   TypeInfo* type;
 };
 
 struct RuntimeStackObject {
-  uint64_t function_ip;
-  uint64_t cfa;
-  uint64_t callsite;
-  uint64_t pid;
+  int64_t function_ip;
+  int64_t cfa;
+  int64_t callsite;
+  int64_t pid;
 };
 
 enum class SampleType {
@@ -128,18 +128,19 @@ struct PerfSample {
   uint32_t tid;
   uint32_t pid;
   uint32_t cpu;
-  uint64_t ip;
-  uint64_t addr;
-  uint64_t sp{};  // sampled user stack pointer (perf --user-regs=sp)
-  uint64_t bp{};  // sampled user frame pointer (perf --user-regs=bp)
-  uint64_t time_stamp{};
+  int64_t ip;
+  int64_t addr;
+  int64_t sp{};  // sampled user stack pointer (perf --user-regs=sp)
+  int64_t bp{};  // sampled user frame pointer (perf --user-regs=bp)
+  int64_t time_stamp{};
   SampleType event_type;
   std::string symbol;
   std::string dso;
 
   friend std::ostream& operator<<(std::ostream& os, const PerfSample& s) {
     return os << std::format(
-             "TID: {}\nPID: {}\nCPU: {}\nIP: 0x{:x}\nADDR: 0x{:x}\nSP: 0x{:x}\nBP: 0x{:x}\n"
+             "TID: {}\nPID: {}\nCPU: {}\nIP: 0x{:x}\nADDR: 0x{:x}\nSP: "
+             "0x{:x}\nBP: 0x{:x}\n"
              "TIME: {}\nSYM: {}\nDSO: {}\n",
              s.tid, s.pid, s.cpu, s.ip, s.addr, s.sp, s.bp, s.time_stamp,
              s.symbol.empty() ? "<unknown>" : s.symbol,
@@ -150,14 +151,14 @@ struct PerfSample {
 struct ResolvedVariable {
   std::string name;
   std::string type_name;
-  uint64_t address;
+  int64_t address;
   size_t size;
   int64_t offset;
   enum class Kind { Global, Stack, TLS } kind;
 };
 
 struct StaticRange {
-  uint64_t start;
-  uint64_t end;
+  int64_t start;
+  int64_t end;
   DwarfGlobalObject* obj;
 };

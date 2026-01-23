@@ -132,9 +132,10 @@ static bool extract_fbreg_offset(Dwarf_Debug dbg, Dwarf_Die die,
 }
 
 static bool extract_addr_location(Dwarf_Debug dbg, Dwarf_Die die,
-                                  uint64_t& out_addr) {
+                                  int64_t& out_addr) {
   Dwarf_Attribute attr = nullptr;
-  if (dwarf_attr(die, DW_AT_location, &attr, nullptr) != DW_DLV_OK) return false;
+  if (dwarf_attr(die, DW_AT_location, &attr, nullptr) != DW_DLV_OK)
+    return false;
 
   Dwarf_Unsigned exprlen = 0;
   Dwarf_Ptr expr         = nullptr;
@@ -160,7 +161,7 @@ static bool extract_addr_location(Dwarf_Debug dbg, Dwarf_Die die,
     return false;
   }
 
-  uint64_t v = 0;
+  int64_t v = 0;
   // DWARF on x86_64 Linux is little-endian; memcpy is fine here.
   std::memcpy(&v, p, std::min<size_t>(addr_size, sizeof(v)));
   out_addr = v;
@@ -357,8 +358,9 @@ void Extractor::process_stack_variable(Dwarf_Die die,
   }
 
   // Function-local 'static' variables have fixed lifetime and are typically
-  // described via DW_OP_addr (not fbreg). Treat them as globals for attribution.
-  uint64_t addr = 0;
+  // described via DW_OP_addr (not fbreg). Treat them as globals for
+  // attribution.
+  int64_t addr = 0;
   if (!extract_addr_location(context.dbg(), die, addr)) return;
 
   DwarfGlobalObject obj;
@@ -374,7 +376,7 @@ void Extractor::process_stack_variable(Dwarf_Die die,
 }
 
 void Extractor::process_global_variable(Dwarf_Die die) {
-  uint64_t addr = 0;
+  int64_t addr = 0;
   if (!extract_addr_location(context.dbg(), die, addr)) return;
 
   DwarfGlobalObject obj;
@@ -447,7 +449,7 @@ void Extractor::process_struct_die(Dwarf_Die die) {
 
       // Member offset within the struct
       Dwarf_Attribute off_attr = nullptr;
-      Dwarf_Unsigned off = 0;
+      Dwarf_Unsigned off       = 0;
       if (dwarf_attr(cur, DW_AT_data_member_location, &off_attr, nullptr) ==
             DW_DLV_OK &&
           dwarf_formudata(off_attr, &off, nullptr) == DW_DLV_OK) {
