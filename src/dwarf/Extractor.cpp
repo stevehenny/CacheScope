@@ -132,42 +132,67 @@ static bool extract_fbreg_offset(Dwarf_Debug dbg, Dwarf_Die die,
 }
 
 static bool extract_addr_location(Dwarf_Debug dbg, Dwarf_Die die,
-                                  int64_t& out_addr) {
+                                   int64_t& out_addr) {
   Dwarf_Attribute attr = nullptr;
   if (dwarf_attr(die, DW_AT_location, &attr, nullptr) != DW_DLV_OK)
     return false;
 
-  Dwarf_Unsigned exprlen = 0;
-  Dwarf_Ptr expr         = nullptr;
-  if (dwarf_formexprloc(attr, &exprlen, &expr, nullptr) != DW_DLV_OK) {
+  // Handle DWARF4/5 location expressions, including DW_OP_addrx and
+  // DW_OP_GNU_addr_index.
+  Dwarf_Loc_Head_c head = nullptr;
+  Dwarf_Unsigned loc_count = 0;
+  Dwarf_Error err = nullptr;
+  if (dwarf_get_loclist_c(attr, &head, &loc_count, &err) != DW_DLV_OK || !head ||
+      loc_count == 0) {
     dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
     return false;
   }
 
-  const uint8_t* p   = static_cast<const uint8_t*>(expr);
-  const uint8_t* end = p + exprlen;
+  Dwarf_Small lle = 0;
+  Dwarf_Addr lowpc = 0;
+  Dwarf_Addr hipc = 0;
+  Dwarf_Unsigned op_count = 0;
+  Dwarf_Locdesc_c locdesc = nullptr;
+  Dwarf_Small src = 0;
+  Dwarf_Unsigned expr_off = 0;
+  Dwarf_Unsigned locdesc_off = 0;
 
-  if (p >= end || *p != DW_OP_addr) {
+  if (dwarf_get_locdesc_entry_c(head, 0, &lle, &lowpc, &hipc, &op_count,
+                                &locdesc, &src, &expr_off, &locdesc_off,
+                                &err) != DW_DLV_OK ||
+      !locdesc || op_count == 0) {
+    dwarf_loc_head_c_dealloc(head);
     dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
     return false;
   }
-  ++p;
 
-  Dwarf_Half addr_size = 0;
-  dwarf_get_address_size(dbg, &addr_size, nullptr);
-  if (addr_size == 0) addr_size = 8;
-  if (p + addr_size > end) {
+  Dwarf_Small atom = 0;
+  Dwarf_Unsigned op1 = 0, op2 = 0, op3 = 0;
+  Dwarf_Unsigned raw1 = 0, raw2 = 0, raw3 = 0;
+  Dwarf_Unsigned branch = 0;
+
+  if (dwarf_get_location_op_value_d(locdesc, 0, &atom, &op1, &op2, &op3, &raw1,
+                                   &raw2, &raw3, &branch, &err) != DW_DLV_OK) {
+    dwarf_loc_head_c_dealloc(head);
     dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
     return false;
   }
 
-  int64_t v = 0;
-  // DWARF on x86_64 Linux is little-endian; memcpy is fine here.
-  std::memcpy(&v, p, std::min<size_t>(addr_size, sizeof(v)));
-  out_addr = v;
+  bool ok = false;
+  if (atom == DW_OP_addr) {
+    out_addr = static_cast<int64_t>(op1);
+    ok = true;
+  } else if (atom == DW_OP_addrx || atom == DW_OP_GNU_addr_index) {
+    Dwarf_Addr a = 0;
+    if (dwarf_debug_addr_index_to_addr(die, op1, &a, &err) == DW_DLV_OK) {
+      out_addr = static_cast<int64_t>(a);
+      ok = true;
+    }
+  }
 
+  dwarf_loc_head_c_dealloc(head);
   dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
-  return true;
+  return ok;
 }
 
 /* ============================================================

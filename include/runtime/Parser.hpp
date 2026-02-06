@@ -125,13 +125,14 @@ struct Parser {
 
   std::optional<int64_t> get_load_bias_from_perf_mmaps(
     const std::string& perf_data_file, const std::string& binary_path,
-    uint32_t pid) {
+    uint32_t /*pid*/) {
     const auto bin_name =
       std::filesystem::path(binary_path).filename().string();
+    // Don't rely on perf's --pid semantics (pid vs tid varies by perf version);
+    // just scan mmap events and match by pathname.
     std::string cmd = std::format(
-      "perf script --show-mmap-events --pid {} -i {} 2>/dev/null | head -n "
-      "5000",
-      pid, perf_data_file);
+      "perf script --show-mmap-events -i {} 2>/dev/null | head -n 20000",
+      perf_data_file);
 
     FILE* pipe = popen(cmd.c_str(), "r");
     if (!pipe) return std::nullopt;
@@ -255,7 +256,7 @@ struct Parser {
     }
 
     // Minimum expected:
-    // pid/tid [cpu] ip addr sym...
+    // tid/pid [cpu] [time] event: addr ip sym... (dso)
     if (toks.size() < 5) return std::nullopt;
 
     size_t idx = 0;
@@ -266,7 +267,7 @@ struct Parser {
       if (toks.size() - idx < 5) return std::nullopt;
     }
 
-    // pid/tid
+    // pid/tid (perf prints "pid/tid" in the first column)
     auto slash = toks[idx].find('/');
     if (slash == std::string_view::npos) return std::nullopt;
 
