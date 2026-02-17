@@ -25,6 +25,7 @@ public:
 
   const std::vector<DwarfStackObject>& get_stack_objects() const;
   const std::vector<DwarfGlobalObject>& get_global_objects() const;
+  const std::vector<DwarfFunctionRange>& get_function_ranges() const;
 
 private:
   void process_die_tree(Dwarf_Die die);
@@ -45,4 +46,5 @@ private:
   std::vector<std::unique_ptr<FieldInfo>> owned_fields;
   std::vector<DwarfStackObject> stack_objects;
   std::vector<DwarfGlobalObject> global_objects;
+  std::vector<DwarfFunctionRange> function_ranges;
 };

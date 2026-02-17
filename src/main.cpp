@@ -20,6 +20,7 @@
 #include "common/Types.hpp"
 #include "dwarf/Extractor.hpp"
 #include "runtime/FalseSharingAnalysis.hpp"
+#include "runtime/PerfEventRecorder.hpp"
 #include "runtime/Parser.hpp"
 #include "runtime/SampleStats.hpp"
 
@@ -105,35 +106,6 @@ static std::string field_path_for_offset(TypeInfo* type, int64_t off,
   return head;
 }
 
-static bool run_perf_record(const std::string& binary,
-                            const std::string& output_file,
-                            const std::string& event, int sample_rate) {
-  pid_t perf_pid = fork();
-
-  if (perf_pid == 0) {
-    // Child: exec perf record
-    auto count_str = std::to_string(sample_rate);
-
-    execlp(
-      "perf", "perf", "record", "-e", event.c_str(),
-      "-d",                 // Record addresses
-      "--sample-cpu",       // Record CPU
-      "--user-regs=sp,bp",  // Sample stack + frame pointers for runtime vars
-      "-c", count_str.c_str(),  // Sample period
-      "-o", output_file.c_str(), "--", binary.c_str(), nullptr);
-
-    // If exec fails
-    perror("execlp perf");
-    _exit(127);
-  }
-
-  // Parent: wait for perf to finish
-  int status;
-  waitpid(perf_pid, &status, 0);
-
-  return WIFEXITED(status) && WEXITSTATUS(status) == 0;
-}
-
 // Statistics helper
 
 int main(int argc, char* argv[]) {
@@ -144,14 +116,13 @@ int main(int argc, char* argv[]) {
   app.add_flag("-v,--verbose", verbose, "Enable verbose debugging output");
 
   Parser parser;
+  PerfEventRecorder recorder;
   std::string binary;
-  std::string output_file    = "perf.data";
   std::string default_events = parser.get_default_mem_events();
   int sample_rate            = 10000;
 
   auto* analyze = app.add_subcommand("analyze", "Analyze cache behavior");
   analyze->add_option("binary", binary)->required()->check(CLI::ExistingFile);
-  analyze->add_option("-o,--output", output_file, "Output perf data file");
   analyze->add_option("-e,--event", default_events, "Perf event to record");
   analyze->add_option("-c,--count", sample_rate, "Sample period");
 
@@ -173,27 +144,40 @@ int main(int argc, char* argv[]) {
 
     // Phase 2: Run perf record
     std::cout << "=== Phase 2: Performance Recording ===\n";
-    std::cout << std::format("Recording {} with event '{}' (period={})\n",
-                             binary, default_events, sample_rate);
+    std::cout << std::format(
+      "Recording {} with event '{}' (period={}) via perf_event_open\n", binary,
+      default_events, sample_rate);
 
-    if (!run_perf_record(binary, output_file, default_events, sample_rate)) {
-      std::cerr << "Perf recording failed\n";
+    auto record =
+      recorder.record(binary, default_events, sample_rate, verbose);
+    if (!record.ok()) {
+      std::cerr << std::format("Perf recording failed: {}\n", record.error);
       return;
     }
 
-    std::cout << std::format("Recording completed: {}\n\n", output_file);
+    std::cout << "Recording completed\n\n";
 
     // Phase 3: Parse samples
     std::cout << "=== Phase 3: Sample Parsing ===\n";
 
-    auto samples = parser.parse_perf_data(output_file);
+    auto samples = std::move(record.samples);
 
     // Filter to samples attributed to the target binary (reduces libc/pthread
     // noise).
     const auto bin_name = std::filesystem::path(binary).filename().string();
+    auto in_binary = [&](int64_t ip) {
+      for (const auto& r : record.binary_maps) {
+        if (ip >= r.start && ip < r.end) return true;
+      }
+      return false;
+    };
+    const bool have_maps = !record.binary_maps.empty();
+    for (auto& s : samples) {
+      if (s.ip != 0 && in_binary(s.ip)) s.dso = binary;
+    }
     size_t before       = samples.size();
     std::erase_if(samples, [&](const PerfSample& s) {
-      if (s.dso.empty()) return false;  // keep unknown
+      if (s.dso.empty()) return have_maps;  // keep unknown if maps missing
       if (s.dso.find(bin_name) != std::string::npos) return false;
       if (s.dso.find(binary) != std::string::npos) return false;
       return true;
@@ -208,8 +192,8 @@ int main(int argc, char* argv[]) {
                 << "  - Lower sample rate (-c)\n"
                 << "  - Different event (-e)\n"
                 << "  - Check available events: perf list\n"
-                << "  - Intel: mem-loads:pp, mem-stores:pp\n"
-                << "  - AMD: ibs_op//\n";
+                << "  - Intel: mem-loads, mem-stores\n"
+                << "  - AMD: ibs_op\n";
       return;
     }
 
@@ -233,11 +217,10 @@ int main(int argc, char* argv[]) {
     std::cout << "=== Phase 5: Runtime Attribution (Stack) ===\n";
 
     int64_t load_bias = 0;
-    if (auto lb = parser.get_load_bias_from_perf_mmaps(output_file, binary,
-                                                       samples[0].pid)) {
-      load_bias = *lb;
+    if (record.load_bias) {
+      load_bias = *record.load_bias;
       if (verbose) {
-        std::cout << std::format("Detected load bias (perf mmaps): 0x{:x}\n",
+        std::cout << std::format("Detected load bias (proc maps): 0x{:x}\n",
                                  load_bias);
       }
     }
@@ -322,6 +305,32 @@ int main(int argc, char* argv[]) {
           }
         }
       }
+    }
+
+    auto fn_ranges = ext.get_function_ranges();
+    std::ranges::sort(fn_ranges, [](const auto& a, const auto& b) {
+      if (a.low_pc != b.low_pc) return a.low_pc < b.low_pc;
+      return a.high_pc < b.high_pc;
+    });
+
+    auto find_fn = [&](int64_t rel_ip) -> const DwarfFunctionRange* {
+      auto it =
+        std::upper_bound(fn_ranges.begin(), fn_ranges.end(), rel_ip,
+                         [](int64_t val, const auto& r) { return val < r.low_pc; });
+      if (it == fn_ranges.begin()) return nullptr;
+      --it;
+      if (rel_ip >= it->low_pc && rel_ip < it->high_pc) return &*it;
+      return nullptr;
+    };
+
+    for (auto& s : samples) {
+      if (s.ip == 0 || s.dso.empty()) continue;
+      const DwarfFunctionRange* fn = nullptr;
+      if (s.ip >= load_bias) fn = find_fn(s.ip - load_bias);
+      if (!fn && inferred_bias && s.ip >= inferred_bias)
+        fn = find_fn(s.ip - inferred_bias);
+      if (!fn) fn = find_fn(s.ip);
+      if (fn) s.symbol = fn->name;
     }
 
     if (!have_frames) {
@@ -446,7 +455,6 @@ int main(int argc, char* argv[]) {
     }
     std::sort(global_ranges.begin(), global_ranges.end(),
               [](const auto& a, const auto& b) { return a.start < b.start; });
-
     // Only attribute samples from our binary.
     std::vector<const PerfSample*> bin_samples;
     bin_samples.reserve(samples.size());

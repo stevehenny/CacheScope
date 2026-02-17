@@ -10,17 +10,22 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # CLI11
 find_package(CLI11 CONFIG REQUIRED)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBELF REQUIRED libelf)
 
+find_path(LIBPFM_INCLUDE_DIR NAMES perfmon/pfmlib.h)
+find_library(LIBPFM_LIBRARY NAMES pfm)
+if (NOT LIBPFM_INCLUDE_DIR OR NOT LIBPFM_LIBRARY)
+  message(FATAL_ERROR "libpfm not found (need perfmon/pfmlib.h and -lpfm)")
+endif()
 
 add_library(cache_scope_includes INTERFACE)
 target_include_directories(cache_scope_includes
   INTERFACE
     ${PROJECT_SOURCE_DIR}/include
     ${LIBELF_INCLUDE_DIRS}
+    ${LIBPFM_INCLUDE_DIR}
 )
-
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(LIBELF REQUIRED libelf)
 
 include(CheckSymbolExists)
 

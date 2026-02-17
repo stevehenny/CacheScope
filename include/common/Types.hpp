@@ -113,6 +113,12 @@ struct DwarfGlobalObject {
   TypeInfo* type;
 };
 
+struct DwarfFunctionRange {
+  std::string name;
+  int64_t low_pc;
+  int64_t high_pc;
+};
+
 struct RuntimeStackObject {
   int64_t function_ip;
   int64_t cfa;

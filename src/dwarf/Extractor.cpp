@@ -15,13 +15,41 @@
  * Helpers
  * ============================================================ */
 
-static std::string die_name(Dwarf_Debug dbg, Dwarf_Die die) {
+static Dwarf_Die resolve_origin_die(Dwarf_Debug dbg, Dwarf_Die die) {
+  Dwarf_Attribute attr = nullptr;
+  if (dwarf_attr(die, DW_AT_abstract_origin, &attr, nullptr) != DW_DLV_OK) {
+    if (dwarf_attr(die, DW_AT_specification, &attr, nullptr) != DW_DLV_OK)
+      return nullptr;
+  }
+
+  Dwarf_Off off = 0;
+  if (dwarf_global_formref(attr, &off, nullptr) != DW_DLV_OK) {
+    dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
+    return nullptr;
+  }
+  dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
+
+  Dwarf_Die origin = nullptr;
+  if (dwarf_offdie_b(dbg, off, true, &origin, nullptr) != DW_DLV_OK)
+    return nullptr;
+  return origin;
+}
+
+static std::string die_name(Dwarf_Debug dbg, Dwarf_Die die, int depth = 0) {
+  if (!die || depth > 4) return "<anonymous>";
   char* name = nullptr;
   if (dwarf_diename(die, &name, nullptr) == DW_DLV_OK && name) {
     std::string s{name};
     dwarf_dealloc(dbg, name, DW_DLA_STRING);
     return s;
   }
+
+  if (auto* origin = resolve_origin_die(dbg, die)) {
+    auto s = die_name(dbg, origin, depth + 1);
+    dwarf_dealloc(dbg, origin, DW_DLA_DIE);
+    return s;
+  }
+
   return "<anonymous>";
 }
 
@@ -31,9 +59,18 @@ static Dwarf_Off die_offset(Dwarf_Die die) {
   return off;
 }
 
-static Dwarf_Die resolve_type_die(Dwarf_Debug dbg, Dwarf_Die die) {
+static Dwarf_Die resolve_type_die(Dwarf_Debug dbg, Dwarf_Die die,
+                                  int depth = 0) {
+  if (!die || depth > 4) return nullptr;
   Dwarf_Attribute attr = nullptr;
-  if (dwarf_attr(die, DW_AT_type, &attr, nullptr) != DW_DLV_OK) return nullptr;
+  if (dwarf_attr(die, DW_AT_type, &attr, nullptr) != DW_DLV_OK) {
+    if (auto* origin = resolve_origin_die(dbg, die)) {
+      auto* resolved = resolve_type_die(dbg, origin, depth + 1);
+      dwarf_dealloc(dbg, origin, DW_DLA_DIE);
+      return resolved;
+    }
+    return nullptr;
+  }
 
   Dwarf_Off off = 0;
   dwarf_global_formref(attr, &off, nullptr);
@@ -75,6 +112,32 @@ static TypeKind tag_to_kind(Dwarf_Half tag) {
   }
 }
 
+static int64_t to_signed_offset(Dwarf_Unsigned val) {
+  constexpr unsigned int bits = sizeof(Dwarf_Unsigned) * 8;
+  const Dwarf_Unsigned sign_bit =
+    (static_cast<Dwarf_Unsigned>(1) << (bits - 1));
+  if (val & sign_bit)
+    return -static_cast<int64_t>(static_cast<Dwarf_Unsigned>(~val) + 1);
+  return static_cast<int64_t>(val);
+}
+
+static bool extract_fbreg_from_locdesc(Dwarf_Locdesc_c locdesc,
+                                       Dwarf_Unsigned op_count,
+                                       int64_t& out_offset) {
+  if (!locdesc || op_count == 0) return false;
+  Dwarf_Small atom   = 0;
+  Dwarf_Unsigned op1 = 0, op2 = 0, op3 = 0;
+  Dwarf_Unsigned raw1 = 0, raw2 = 0, raw3 = 0;
+  Dwarf_Unsigned branch = 0;
+  Dwarf_Error err       = nullptr;
+  if (dwarf_get_location_op_value_d(locdesc, 0, &atom, &op1, &op2, &op3, &raw1,
+                                    &raw2, &raw3, &branch, &err) != DW_DLV_OK)
+    return false;
+  if (atom != DW_OP_fbreg) return false;
+  out_offset = to_signed_offset(op1);
+  return true;
+}
+
 /* ============================================================
  * DW_OP_fbreg extraction
  * ============================================================ */
@@ -102,59 +165,48 @@ static bool extract_fbreg_offset(Dwarf_Debug dbg, Dwarf_Die die,
 
   Dwarf_Unsigned exprlen = 0;
   Dwarf_Ptr expr         = nullptr;
-  if (dwarf_formexprloc(attr, &exprlen, &expr, nullptr) != DW_DLV_OK) {
+  if (dwarf_formexprloc(attr, &exprlen, &expr, nullptr) == DW_DLV_OK) {
+    const uint8_t* p   = static_cast<const uint8_t*>(expr);
+    const uint8_t* end = p + exprlen;
+
+    if (p >= end || *p != DW_OP_fbreg) {
+      dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
+      return false;
+    }
+
+    ++p;
+    int64_t value = 0;
+    int shift     = 0;
+    while (p < end) {
+      uint8_t byte = *p++;
+      value |= int64_t(byte & 0x7f) << shift;
+      shift += 7;
+      if ((byte & 0x80) == 0) break;
+    }
+    if (shift < 64 && (value & (1LL << (shift - 1)))) value |= (-1LL) << shift;
+
+    out_offset = value;
     dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
-    return false;
+    return true;
   }
 
-  const uint8_t* p   = static_cast<const uint8_t*>(expr);
-  const uint8_t* end = p + exprlen;
-
-  if (p >= end || *p != DW_OP_fbreg) {
-    dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
-    return false;
-  }
-
-  ++p;
-  int64_t value = 0;
-  int shift     = 0;
-  while (p < end) {
-    uint8_t byte = *p++;
-    value |= int64_t(byte & 0x7f) << shift;
-    shift += 7;
-    if ((byte & 0x80) == 0) break;
-  }
-  if (shift < 64 && (value & (1LL << (shift - 1)))) value |= (-1LL) << shift;
-
-  out_offset = value;
-  dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
-  return true;
-}
-
-static bool extract_addr_location(Dwarf_Debug dbg, Dwarf_Die die,
-                                   int64_t& out_addr) {
-  Dwarf_Attribute attr = nullptr;
-  if (dwarf_attr(die, DW_AT_location, &attr, nullptr) != DW_DLV_OK)
-    return false;
-
-  // Handle DWARF4/5 location expressions, including DW_OP_addrx and
-  // DW_OP_GNU_addr_index.
-  Dwarf_Loc_Head_c head = nullptr;
+  // DWARF4/5 loclists
+  Dwarf_Loc_Head_c head    = nullptr;
   Dwarf_Unsigned loc_count = 0;
-  Dwarf_Error err = nullptr;
-  if (dwarf_get_loclist_c(attr, &head, &loc_count, &err) != DW_DLV_OK || !head ||
-      loc_count == 0) {
+  Dwarf_Error err          = nullptr;
+  if (dwarf_get_loclist_c(attr, &head, &loc_count, &err) != DW_DLV_OK ||
+      !head || loc_count == 0) {
     dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
     return false;
   }
 
-  Dwarf_Small lle = 0;
-  Dwarf_Addr lowpc = 0;
-  Dwarf_Addr hipc = 0;
-  Dwarf_Unsigned op_count = 0;
-  Dwarf_Locdesc_c locdesc = nullptr;
-  Dwarf_Small src = 0;
-  Dwarf_Unsigned expr_off = 0;
+  Dwarf_Small lle            = 0;
+  Dwarf_Addr lowpc           = 0;
+  Dwarf_Addr hipc            = 0;
+  Dwarf_Unsigned op_count    = 0;
+  Dwarf_Locdesc_c locdesc    = nullptr;
+  Dwarf_Small src            = 0;
+  Dwarf_Unsigned expr_off    = 0;
   Dwarf_Unsigned locdesc_off = 0;
 
   if (dwarf_get_locdesc_entry_c(head, 0, &lle, &lowpc, &hipc, &op_count,
@@ -166,13 +218,54 @@ static bool extract_addr_location(Dwarf_Debug dbg, Dwarf_Die die,
     return false;
   }
 
-  Dwarf_Small atom = 0;
+  bool ok = extract_fbreg_from_locdesc(locdesc, op_count, out_offset);
+  dwarf_loc_head_c_dealloc(head);
+  dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
+  return ok;
+}
+
+static bool extract_addr_location(Dwarf_Debug dbg, Dwarf_Die die,
+                                  int64_t& out_addr) {
+  Dwarf_Attribute attr = nullptr;
+  if (dwarf_attr(die, DW_AT_location, &attr, nullptr) != DW_DLV_OK)
+    return false;
+
+  // Handle DWARF4/5 location expressions, including DW_OP_addrx and
+  // DW_OP_GNU_addr_index.
+  Dwarf_Loc_Head_c head    = nullptr;
+  Dwarf_Unsigned loc_count = 0;
+  Dwarf_Error err          = nullptr;
+  if (dwarf_get_loclist_c(attr, &head, &loc_count, &err) != DW_DLV_OK ||
+      !head || loc_count == 0) {
+    dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
+    return false;
+  }
+
+  Dwarf_Small lle            = 0;
+  Dwarf_Addr lowpc           = 0;
+  Dwarf_Addr hipc            = 0;
+  Dwarf_Unsigned op_count    = 0;
+  Dwarf_Locdesc_c locdesc    = nullptr;
+  Dwarf_Small src            = 0;
+  Dwarf_Unsigned expr_off    = 0;
+  Dwarf_Unsigned locdesc_off = 0;
+
+  if (dwarf_get_locdesc_entry_c(head, 0, &lle, &lowpc, &hipc, &op_count,
+                                &locdesc, &src, &expr_off, &locdesc_off,
+                                &err) != DW_DLV_OK ||
+      !locdesc || op_count == 0) {
+    dwarf_loc_head_c_dealloc(head);
+    dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
+    return false;
+  }
+
+  Dwarf_Small atom   = 0;
   Dwarf_Unsigned op1 = 0, op2 = 0, op3 = 0;
   Dwarf_Unsigned raw1 = 0, raw2 = 0, raw3 = 0;
   Dwarf_Unsigned branch = 0;
 
   if (dwarf_get_location_op_value_d(locdesc, 0, &atom, &op1, &op2, &op3, &raw1,
-                                   &raw2, &raw3, &branch, &err) != DW_DLV_OK) {
+                                    &raw2, &raw3, &branch, &err) != DW_DLV_OK) {
     dwarf_loc_head_c_dealloc(head);
     dwarf_dealloc(dbg, attr, DW_DLA_ATTR);
     return false;
@@ -181,12 +274,12 @@ static bool extract_addr_location(Dwarf_Debug dbg, Dwarf_Die die,
   bool ok = false;
   if (atom == DW_OP_addr) {
     out_addr = static_cast<int64_t>(op1);
-    ok = true;
-  } else if (atom == DW_OP_addrx || atom == DW_OP_GNU_addr_index) {
+    ok       = true;
+    // } else if (atom == DW_OP_addrx || atom == DW_OP_GNU_addr_index) {
     Dwarf_Addr a = 0;
     if (dwarf_debug_addr_index_to_addr(die, op1, &a, &err) == DW_DLV_OK) {
       out_addr = static_cast<int64_t>(a);
-      ok = true;
+      ok       = true;
     }
   }
 
@@ -422,25 +515,56 @@ void Extractor::process_global_variable(Dwarf_Die die) {
 void Extractor::process_subprogram_die(Dwarf_Die die) {
   std::string function = die_name(context.dbg(), die);
 
+  Dwarf_Addr lowpc  = 0;
+  Dwarf_Addr highpc = 0;
+  Dwarf_Half form   = 0;
+  Dwarf_Form_Class form_class = DW_FORM_CLASS_UNKNOWN;
+  Dwarf_Error err   = nullptr;
+  if (dwarf_lowpc(die, &lowpc, &err) == DW_DLV_OK &&
+      dwarf_highpc_b(die, &highpc, &form, &form_class, &err) == DW_DLV_OK) {
+    int64_t high = 0;
+    if (form == DW_FORM_addr) {
+      high = static_cast<int64_t>(highpc);
+    } else {
+      high = static_cast<int64_t>(lowpc + highpc);
+    }
+    if (high > static_cast<int64_t>(lowpc) && function != "<anonymous>") {
+      function_ranges.push_back(
+        DwarfFunctionRange{function, static_cast<int64_t>(lowpc), high});
+    }
+  }
+
   Dwarf_Die child = nullptr;
   if (dwarf_child(die, &child, nullptr) != DW_DLV_OK) return;
 
-  for (Dwarf_Die cur = child; cur;) {
-    Dwarf_Half tag = 0;
-    dwarf_tag(cur, &tag, nullptr);
+  auto walk_scope = [&](Dwarf_Die scope, auto&& walk_scope_ref) -> void {
+    for (Dwarf_Die cur = scope; cur;) {
+      Dwarf_Half tag = 0;
+      dwarf_tag(cur, &tag, nullptr);
 
-    if (tag == DW_TAG_variable || tag == DW_TAG_formal_parameter)
-      process_stack_variable(cur, function);
+      if (tag == DW_TAG_variable || tag == DW_TAG_formal_parameter)
+        process_stack_variable(cur, function);
 
-    Dwarf_Die sib = nullptr;
-    if (dwarf_siblingof_b(context.dbg(), cur, true, &sib, nullptr) !=
-        DW_DLV_OK) {
+      if (tag == DW_TAG_lexical_block || tag == DW_TAG_inlined_subroutine ||
+          tag == DW_TAG_try_block || tag == DW_TAG_catch_block ||
+          tag == DW_TAG_with_stmt) {
+        Dwarf_Die nested = nullptr;
+        if (dwarf_child(cur, &nested, nullptr) == DW_DLV_OK)
+          walk_scope_ref(nested, walk_scope_ref);
+      }
+
+      Dwarf_Die sib = nullptr;
+      if (dwarf_siblingof_b(context.dbg(), cur, true, &sib, nullptr) !=
+          DW_DLV_OK) {
+        dwarf_dealloc(context.dbg(), cur, DW_DLA_DIE);
+        break;
+      }
       dwarf_dealloc(context.dbg(), cur, DW_DLA_DIE);
-      break;
+      cur = sib;
     }
-    dwarf_dealloc(context.dbg(), cur, DW_DLA_DIE);
-    cur = sib;
-  }
+  };
+
+  walk_scope(child, walk_scope);
 }
 
 /* ============================================================
@@ -545,6 +669,10 @@ const std::vector<DwarfStackObject>& Extractor::get_stack_objects() const {
 
 const std::vector<DwarfGlobalObject>& Extractor::get_global_objects() const {
   return global_objects;
+}
+
+const std::vector<DwarfFunctionRange>& Extractor::get_function_ranges() const {
+  return function_ranges;
 }
 
 const Registry<std::string, StructInfo>& Extractor::get_registry() const {

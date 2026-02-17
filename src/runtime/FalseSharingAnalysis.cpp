@@ -45,7 +45,7 @@ std::vector<CacheLine> FalseSharingAnalysis::find_hot_cache_lines(
 
   // Pass 2: compute time-ordered switching + per-thread offset overlap for
   // candidate lines. This avoids inflated switching due to cross-CPU
-  // interleaving in perf script output.
+  // interleaving in sampled output.
   struct Touch {
     int64_t t;
     uint32_t tid;
