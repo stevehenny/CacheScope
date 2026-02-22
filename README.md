@@ -13,14 +13,16 @@ It helps developers identify performance-critical areas where threads contend on
 
 Install the following:
 
-// on Arch
-`sudo pacman -S cli11 libdwarf libelf libpfm`
+// on Arch (GLFW package may be glfw-x11 or glfw-wayland)
+`sudo pacman -S cli11 libdwarf libelf libpfm glfw mesa`
 
 // on Ubuntu/Debian
-`sudo apt install libcli11-dev libdwarf-dev libelf-dev libpfm4-dev`
+`sudo apt install libcli11-dev libdwarf-dev libelf-dev libpfm4-dev libglfw3-dev libgl1-mesa-dev`
 
 // Fedora
-`sudo dnf install cli11-devel libdwarf-devel elfutils-libelf-devel libpfm-devel`
+`sudo dnf install cli11-devel libdwarf-devel elfutils-libelf-devel libpfm-devel glfw-devel mesa-libGL-devel`
+
+ImGui is included as a git submodule under `third_party/imgui`.
 
 ---
 
@@ -47,6 +49,16 @@ CacheScope fills this gap, giving developers actionable insights to optimize cac
 ---
 ## **Features Added**
 
+- **Report output**: Export false sharing results to Markdown or JSON with
+  `--report-md` and `--report-json`.
+
+---
+
+## **Reports**
+
+```bash
+./cache_scope analyze ./my_binary --report-md report.md --report-json report.json
+```
 
 ---
 
@@ -55,10 +67,19 @@ CacheScope fills this gap, giving developers actionable insights to optimize cac
 ```bash
 git clone https://github.com/yourusername/CacheScope.git
 cd CacheScope
+git submodule update --init --recursive
 mkdir build && cd build
 cmake ..
 make
 ```
+
+### GUI (ImGui)
+
+```bash
+./cache_scope_gui report.json
+```
+
+Disable the GUI build with `-DCACHESCOPE_BUILD_GUI=OFF` if you only want the CLI.
 
 ### Notes for stack-variable attribution
 

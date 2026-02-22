@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -19,6 +20,8 @@
 
 #include "common/Types.hpp"
 #include "dwarf/Extractor.hpp"
+#include "report/JsonReport.hpp"
+#include "report/TextReport.hpp"
 #include "runtime/FalseSharingAnalysis.hpp"
 #include "runtime/PerfEventRecorder.hpp"
 #include "runtime/Parser.hpp"
@@ -128,11 +131,17 @@ int main(int argc, char* argv[]) {
   std::string binary;
   std::string default_events = parser.get_default_mem_events();
   int sample_rate            = 10000;
+  std::string report_md_path;
+  std::string report_json_path;
 
   auto* analyze = app.add_subcommand("analyze", "Analyze cache behavior");
   analyze->add_option("binary", binary)->required()->check(CLI::ExistingFile);
   analyze->add_option("-e,--event", default_events, "Perf event to record");
   analyze->add_option("-c,--count", sample_rate, "Sample period");
+  analyze->add_option("--report-md", report_md_path,
+                      "Write false sharing report to Markdown file");
+  analyze->add_option("--report-json", report_json_path,
+                      "Write false sharing report to JSON file");
 
   analyze->callback([&]() {
     // Phase 1: DWARF extraction
@@ -221,6 +230,39 @@ int main(int argc, char* argv[]) {
     // Phase 4: False sharing analysis
     auto hot_lines = FalseSharingAnalysis::find_hot_cache_lines(samples);
     FalseSharingAnalysis::print(hot_lines);
+
+    if (!report_md_path.empty() || !report_json_path.empty()) {
+      Report report = Report::from_false_sharing(
+        binary, default_events, sample_rate, stats, hot_lines);
+
+      if (!report_md_path.empty()) {
+        std::ofstream out(report_md_path);
+        if (!out) {
+          std::cerr << std::format("Failed to open Markdown report: {}\n",
+                                   report_md_path);
+        } else {
+          TextReport::write_markdown(out, report);
+          if (verbose) {
+            std::cout << std::format("Wrote Markdown report: {}\n",
+                                     report_md_path);
+          }
+        }
+      }
+
+      if (!report_json_path.empty()) {
+        std::ofstream out(report_json_path);
+        if (!out) {
+          std::cerr << std::format("Failed to open JSON report: {}\n",
+                                   report_json_path);
+        } else {
+          JsonReport::write(out, report);
+          if (verbose) {
+            std::cout << std::format("Wrote JSON report: {}\n",
+                                     report_json_path);
+          }
+        }
+      }
+    }
 
     // Phase 5: Runtime attribution (stack locals)
     std::cout << "=== Phase 5: Runtime Attribution (Stack) ===\n";
