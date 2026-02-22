@@ -40,7 +40,6 @@ struct Parser {
     return trim(sym);
   }
 
-
   std::optional<int64_t> dwarf_reg_value(const PerfSample& s,
                                          Dwarf_Signed dwarf_regnum) {
 #if defined(__x86_64__)
@@ -109,5 +108,4 @@ struct Parser {
     if (cfa_i64 < 0) return std::nullopt;
     return static_cast<int64_t>(cfa_i64);
   }
-
 };

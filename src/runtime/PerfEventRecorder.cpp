@@ -1,23 +1,26 @@
 #include "runtime/PerfEventRecorder.hpp"
 
 #include <linux/perf_event.h>
+#include <perfmon/pfmlib.h>
+#include <perfmon/pfmlib_perf_event.h>
+#include <signal.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <unistd.h>
 
-#include <perfmon/pfmlib.h>
-#include <perfmon/pfmlib_perf_event.h>
-
 #if defined(__x86_64__) || defined(__i386__)
 #include <asm/perf_regs.h>
 #endif
 
+#include <sys/wait.h>
+
 #include <algorithm>
 #include <atomic>
-#include <cerrno>
 #include <cctype>
+#include <cerrno>
+#include <charconv>
 #include <chrono>
 #include <cstring>
 #include <filesystem>
@@ -27,7 +30,6 @@
 #include <mutex>
 #include <sstream>
 #include <thread>
-#include <sys/wait.h>
 
 namespace {
 
@@ -46,6 +48,56 @@ std::string trim_copy(std::string_view sv) {
   return std::string(sv.substr(b, e - b + 1));
 }
 
+bool parse_u64(std::string_view sv, uint64_t& out) {
+  sv = trim_copy(sv);
+  const char* begin = sv.data();
+  const char* end   = sv.data() + sv.size();
+  auto [ptr, ec]    = std::from_chars(begin, end, out, 10);
+  return ec == std::errc() && ptr == end;
+}
+
+bool apply_sysfs_field(const std::filesystem::path& path, uint64_t value,
+                       perf_event_attr& attr, std::string& error) {
+  std::ifstream file(path);
+  if (!file) {
+    error = std::format("failed to open {}", path.string());
+    return false;
+  }
+  std::string spec;
+  if (!std::getline(file, spec)) {
+    error = std::format("failed to read {}", path.string());
+    return false;
+  }
+  spec = trim_copy(spec);
+  auto colon = spec.find(':');
+  if (colon == std::string::npos) {
+    error = std::format("invalid format spec '{}'", spec);
+    return false;
+  }
+  auto reg  = trim_copy(spec.substr(0, colon));
+  auto bits = trim_copy(spec.substr(colon + 1));
+  auto dash = bits.find('-');
+  auto shift_spec =
+    dash == std::string::npos ? bits : bits.substr(0, dash);
+  uint64_t shift = 0;
+  if (!parse_u64(shift_spec, shift) || shift >= 64) {
+    error = std::format("invalid bit shift '{}'", shift_spec);
+    return false;
+  }
+  const uint64_t shifted = value << shift;
+  if (reg == "config") {
+    attr.config |= shifted;
+  } else if (reg == "config1") {
+    attr.config1 |= shifted;
+  } else if (reg == "config2") {
+    attr.config2 |= shifted;
+  } else {
+    error = std::format("unsupported perf config field '{}'", reg);
+    return false;
+  }
+  return true;
+}
+
 bool ensure_pfm_init(std::string& error) {
   static std::once_flag once;
   static int init_status = PFM_SUCCESS;
@@ -58,14 +110,45 @@ bool ensure_pfm_init(std::string& error) {
   return true;
 }
 
+bool encode_ibs_op_sysfs(perf_event_attr& attr, std::string& error) {
+  const std::filesystem::path pmu_path("/sys/bus/event_source/devices/ibs_op");
+  std::ifstream type_file(pmu_path / "type");
+  if (!type_file) {
+    error = "ibs_op PMU not available (missing /sys/bus/event_source/devices/"
+            "ibs_op/type)";
+    return false;
+  }
+  unsigned int type = 0;
+  type_file >> type;
+  if (!type_file) {
+    error = "failed to parse ibs_op PMU type";
+    return false;
+  }
+  attr.type    = type;
+  attr.config  = 0;
+  attr.config1 = 0;
+  attr.config2 = 0;
+  if (!apply_sysfs_field(pmu_path / "format" / "cnt_ctl", 1, attr, error)) {
+    return false;
+  }
+  return true;
+}
+
 bool encode_event(const std::string& event, perf_event_attr& attr,
                   std::string& error) {
   pfm_perf_encode_arg_t arg{};
   arg.attr = &attr;
   arg.size = sizeof(arg);
-  int ret  = pfm_get_os_event_encoding(event.c_str(), PFM_PLM3,
-                                      PFM_OS_PERF_EVENT, &arg);
+  int ret =
+    pfm_get_os_event_encoding(event.c_str(), PFM_PLM3, PFM_OS_PERF_EVENT, &arg);
   if (ret != PFM_SUCCESS) {
+    if (ret == PFM_ERR_NOTFOUND && event == "ibs_op") {
+      std::string sysfs_error;
+      if (encode_ibs_op_sysfs(attr, sysfs_error)) return true;
+      error = std::format("libpfm failed to encode '{}': {} ({})", event,
+                          std::string(pfm_strerror(ret)), sysfs_error);
+      return false;
+    }
     error = std::format("libpfm failed to encode '{}': {}", event,
                         std::string(pfm_strerror(ret)));
     return false;
@@ -75,10 +158,19 @@ bool encode_event(const std::string& event, perf_event_attr& attr,
 
 SampleType event_type_from_name(const std::string& name) {
   auto lower = name;
-  std::transform(lower.begin(), lower.end(), lower.begin(),
-                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  std::transform(
+    lower.begin(), lower.end(), lower.begin(),
+    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
   if (lower.find("store") != std::string::npos) return SampleType::CACHE_STORE;
   return SampleType::CACHE_LOAD;
+}
+
+bool is_ibs_op_event(std::string_view name) {
+  std::string lower{name};
+  std::transform(
+    lower.begin(), lower.end(), lower.begin(),
+    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return lower.find("ibs_op") != std::string::npos;
 }
 
 struct PerfEventHandle {
@@ -89,35 +181,43 @@ struct PerfEventHandle {
   SampleType type{SampleType::CACHE_LOAD};
 };
 
-bool setup_event(pid_t pid, const std::string& name, int sample_period,
+bool setup_event(pid_t pid, const std::string& name, int sample_period, int cpu,
                  PerfEventHandle& out, std::string& error) {
   std::memset(&out.attr, 0, sizeof(out.attr));
   if (!encode_event(name, out.attr, error)) return false;
 
-  out.attr.size          = sizeof(out.attr);
-  out.attr.sample_type   = PERF_SAMPLE_IP | PERF_SAMPLE_TID | PERF_SAMPLE_TIME |
-                         PERF_SAMPLE_ADDR | PERF_SAMPLE_CPU |
-                         PERF_SAMPLE_REGS_USER;
-  out.attr.sample_period = static_cast<uint64_t>(sample_period);
-  out.attr.disabled      = 1;
-  out.attr.exclude_kernel = 1;
-  out.attr.exclude_hv     = 1;
+  const bool ibs_op = is_ibs_op_event(name);
+  out.attr.size        = sizeof(out.attr);
+  if (ibs_op) {
+    out.attr.sample_type = PERF_SAMPLE_IP | PERF_SAMPLE_TID | PERF_SAMPLE_TIME |
+                           PERF_SAMPLE_ADDR | PERF_SAMPLE_DATA_SRC;
+  } else {
+    out.attr.sample_type = PERF_SAMPLE_IP | PERF_SAMPLE_TID | PERF_SAMPLE_TIME |
+                           PERF_SAMPLE_ADDR | PERF_SAMPLE_CPU |
+                           PERF_SAMPLE_REGS_USER;
+  }
+  out.attr.sample_period  = static_cast<uint64_t>(sample_period);
+  out.attr.disabled       = 1;
+  out.attr.exclude_kernel = ibs_op ? 0 : 1;
+  out.attr.exclude_hv     = ibs_op ? 0 : 1;
   out.attr.inherit        = 1;
-  out.attr.precise_ip     = 2;
+  out.attr.precise_ip     = ibs_op ? 0 : 2;
 
 #if defined(__x86_64__) || defined(__i386__)
-  out.attr.sample_regs_user =
-    (1ULL << PERF_REG_X86_SP) | (1ULL << PERF_REG_X86_BP);
+  if (!ibs_op) {
+    out.attr.sample_regs_user =
+      (1ULL << PERF_REG_X86_SP) | (1ULL << PERF_REG_X86_BP);
+  }
 #else
   out.attr.sample_regs_user = 0;
 #endif
 
   out.type = event_type_from_name(name);
-
-  int fd = perf_event_open_sys(&out.attr, pid, -1, -1, 0);
-  if (fd == -1 && errno == EINVAL && out.attr.precise_ip != 0) {
+  int fd = perf_event_open_sys(&out.attr, pid, cpu, -1, 0);
+  if (fd == -1 && out.attr.precise_ip != 0 &&
+      (errno == EINVAL || errno == EOPNOTSUPP || errno == ENOENT)) {
     out.attr.precise_ip = 0;
-    fd                 = perf_event_open_sys(&out.attr, pid, -1, -1, 0);
+    fd                  = perf_event_open_sys(&out.attr, pid, cpu, -1, 0);
   }
   if (fd == -1) {
     error = std::format("perf_event_open failed for '{}': {}", name,
@@ -171,7 +271,7 @@ void parse_sample(const perf_event_attr& attr, SampleType type,
   const uint8_t* p   = data;
   const uint8_t* end = data + size;
 
-  auto need = [&](size_t n) { return static_cast<size_t>(end - p) >= n; };
+  auto need     = [&](size_t n) { return static_cast<size_t>(end - p) >= n; };
   auto read_u32 = [&]() {
     uint32_t v = 0;
     if (need(sizeof(v))) {
@@ -192,7 +292,8 @@ void parse_sample(const perf_event_attr& attr, SampleType type,
   PerfSample s{};
   s.event_type = type;
 
-  if (attr.sample_type & PERF_SAMPLE_IP) s.ip = static_cast<int64_t>(read_u64());
+  if (attr.sample_type & PERF_SAMPLE_IP)
+    s.ip = static_cast<int64_t>(read_u64());
   if (attr.sample_type & PERF_SAMPLE_TID) {
     s.pid = read_u32();
     s.tid = read_u32();
@@ -249,7 +350,7 @@ void read_event_samples(PerfEventHandle& ev, std::vector<PerfSample>& out) {
     read_buffer(data, data_size, tail, record.data(), header.size);
 
     if (header.type == PERF_RECORD_SAMPLE) {
-      const uint8_t* payload = record.data() + sizeof(perf_event_header);
+      const uint8_t* payload  = record.data() + sizeof(perf_event_header);
       const size_t payload_sz = record.size() - sizeof(perf_event_header);
       parse_sample(ev.attr, ev.type, payload, payload_sz, out);
     }
@@ -290,8 +391,7 @@ ProcMapInfo read_proc_maps(pid_t pid, const std::string& binary) {
     std::string path;
 
     std::istringstream iss(line);
-    if (!(iss >> addr_range >> perms >> offset_str >> dev >> inode))
-      continue;
+    if (!(iss >> addr_range >> perms >> offset_str >> dev >> inode)) continue;
     std::getline(iss, path);
     path = trim_copy(path);
     if (path.empty()) continue;
@@ -364,27 +464,53 @@ PerfRecordResult PerfEventRecorder::record(const std::string& binary,
 
   pid_t pid = fork();
   if (pid == -1) {
-    result.error = std::format("fork failed: {}", std::string(std::strerror(errno)));
+    result.error =
+      std::format("fork failed: {}", std::string(std::strerror(errno)));
     return result;
   }
 
   if (pid == 0) {
+    raise(SIGSTOP);
     execl(binary.c_str(), binary.c_str(), nullptr);
     _exit(127);
   }
 
-  std::vector<PerfEventHandle> handles;
-  handles.reserve(events.size());
+  int status = 0;
+  if (waitpid(pid, &status, WUNTRACED) == -1) {
+    result.error =
+      std::format("waitpid failed: {}", std::string(std::strerror(errno)));
+    return result;
+  }
+  if (!WIFSTOPPED(status)) {
+    result.error = "child did not stop before exec";
+    return result;
+  }
 
-  for (const auto& ev : events) {
+  std::vector<PerfEventHandle> handles;
+  const int cpu_count =
+    std::max(1, static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN)));
+  handles.reserve(events.size() * static_cast<size_t>(cpu_count));
+
+  auto open_event = [&](const std::string& ev, int cpu) {
     PerfEventHandle h;
-    if (!setup_event(pid, ev, sample_period, h, result.error)) {
+    if (!setup_event(pid, ev, sample_period, cpu, h, result.error)) {
       for (auto& open : handles) teardown_event(open);
       int status = 0;
       waitpid(pid, &status, 0);
-      return result;
+      return false;
     }
     handles.push_back(std::move(h));
+    return true;
+  };
+
+  for (const auto& ev : events) {
+    if (is_ibs_op_event(ev)) {
+      for (int cpu = 0; cpu < cpu_count; ++cpu) {
+        if (!open_event(ev, cpu)) return result;
+      }
+    } else {
+      if (!open_event(ev, -1)) return result;
+    }
   }
 
   for (auto& h : handles) {
@@ -392,11 +518,17 @@ PerfRecordResult PerfEventRecorder::record(const std::string& binary,
     ioctl(h.fd, PERF_EVENT_IOC_ENABLE, 0);
   }
 
-  auto maps = wait_for_proc_maps(pid, binary);
+  if (kill(pid, SIGCONT) != 0) {
+    result.error =
+      std::format("failed to resume child: {}", std::string(std::strerror(errno)));
+    for (auto& h : handles) teardown_event(h);
+    return result;
+  }
+
+  auto maps          = wait_for_proc_maps(pid, binary);
   result.binary_maps = maps.ranges;
   result.load_bias   = maps.load_bias;
 
-  int status = 0;
   waitpid(pid, &status, 0);
 
   for (auto& h : handles) {

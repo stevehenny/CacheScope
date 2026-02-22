@@ -39,6 +39,14 @@ static const DwarfGlobalObject* find_global_for_addr(
   return nullptr;
 }
 
+static bool is_ibs_op_event_spec(std::string_view spec) {
+  std::string lower(spec);
+  std::transform(
+    lower.begin(), lower.end(), lower.begin(),
+    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return lower.find("ibs_op") != std::string::npos;
+}
+
 static TypeInfo* unwrap_type(TypeInfo* t) {
   while (t &&
          (t->kind == TypeKind::Typedef || t->kind == TypeKind::Const ||
@@ -171,13 +179,14 @@ int main(int argc, char* argv[]) {
       }
       return false;
     };
-    const bool have_maps = !record.binary_maps.empty();
+    const bool have_maps         = !record.binary_maps.empty();
+    const bool allow_unknown_dso = is_ibs_op_event_spec(default_events);
     for (auto& s : samples) {
       if (s.ip != 0 && in_binary(s.ip)) s.dso = binary;
     }
     size_t before       = samples.size();
     std::erase_if(samples, [&](const PerfSample& s) {
-      if (s.dso.empty()) return have_maps;  // keep unknown if maps missing
+      if (s.dso.empty()) return have_maps && !allow_unknown_dso;
       if (s.dso.find(bin_name) != std::string::npos) return false;
       if (s.dso.find(binary) != std::string::npos) return false;
       return true;
