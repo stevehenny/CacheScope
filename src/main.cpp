@@ -23,8 +23,8 @@
 #include "report/JsonReport.hpp"
 #include "report/TextReport.hpp"
 #include "runtime/FalseSharingAnalysis.hpp"
-#include "runtime/PerfEventRecorder.hpp"
 #include "runtime/Parser.hpp"
+#include "runtime/PerfEventRecorder.hpp"
 #include "runtime/SampleStats.hpp"
 
 static const DwarfGlobalObject* find_global_for_addr(
@@ -129,10 +129,14 @@ int main(int argc, char* argv[]) {
   Parser parser;
   PerfEventRecorder recorder;
   std::string binary;
-  std::string default_events = parser.get_default_mem_events();
-  int sample_rate            = 10000;
-  std::string report_md_path;
-  std::string report_json_path;
+  std::string default_events   = parser.get_default_mem_events();
+  int sample_rate              = 10000;
+  std::string report_md_path   = "cache_scope.md";
+  std::string report_json_path = "cache_scope.json";
+
+  auto* report = app.add_subcommand(
+    "report",
+    "Generate gui report from json file. Default is cache_scope.json");
 
   auto* analyze = app.add_subcommand("analyze", "Analyze cache behavior");
   analyze->add_option("binary", binary)->required()->check(CLI::ExistingFile);
@@ -143,6 +147,7 @@ int main(int argc, char* argv[]) {
   analyze->add_option("--report-json", report_json_path,
                       "Write false sharing report to JSON file");
 
+  // TODO: Create Analyze class to refactor this mess holy shit
   analyze->callback([&]() {
     // Phase 1: DWARF extraction
     std::cout << "=== Phase 1: DWARF Analysis ===\n";
@@ -165,8 +170,7 @@ int main(int argc, char* argv[]) {
       "Recording {} with event '{}' (period={}) via perf_event_open\n", binary,
       default_events, sample_rate);
 
-    auto record =
-      recorder.record(binary, default_events, sample_rate, verbose);
+    auto record = recorder.record(binary, default_events, sample_rate, verbose);
     if (!record.ok()) {
       std::cerr << std::format("Perf recording failed: {}\n", record.error);
       return;
@@ -182,7 +186,7 @@ int main(int argc, char* argv[]) {
     // Filter to samples attributed to the target binary (reduces libc/pthread
     // noise).
     const auto bin_name = std::filesystem::path(binary).filename().string();
-    auto in_binary = [&](int64_t ip) {
+    auto in_binary      = [&](int64_t ip) {
       for (const auto& r : record.binary_maps) {
         if (ip >= r.start && ip < r.end) return true;
       }
@@ -193,7 +197,7 @@ int main(int argc, char* argv[]) {
     for (auto& s : samples) {
       if (s.ip != 0 && in_binary(s.ip)) s.dso = binary;
     }
-    size_t before       = samples.size();
+    size_t before = samples.size();
     std::erase_if(samples, [&](const PerfSample& s) {
       if (s.dso.empty()) return have_maps && !allow_unknown_dso;
       if (s.dso.find(bin_name) != std::string::npos) return false;
@@ -232,8 +236,8 @@ int main(int argc, char* argv[]) {
     FalseSharingAnalysis::print(hot_lines);
 
     if (!report_md_path.empty() || !report_json_path.empty()) {
-      Report report = Report::from_false_sharing(
-        binary, default_events, sample_rate, stats, hot_lines);
+      Report report = Report::from_false_sharing(binary, default_events,
+                                                 sample_rate, stats, hot_lines);
 
       if (!report_md_path.empty()) {
         std::ofstream out(report_md_path);
@@ -365,9 +369,9 @@ int main(int argc, char* argv[]) {
     });
 
     auto find_fn = [&](int64_t rel_ip) -> const DwarfFunctionRange* {
-      auto it =
-        std::upper_bound(fn_ranges.begin(), fn_ranges.end(), rel_ip,
-                         [](int64_t val, const auto& r) { return val < r.low_pc; });
+      auto it = std::upper_bound(
+        fn_ranges.begin(), fn_ranges.end(), rel_ip,
+        [](int64_t val, const auto& r) { return val < r.low_pc; });
       if (it == fn_ranges.begin()) return nullptr;
       --it;
       if (rel_ip >= it->low_pc && rel_ip < it->high_pc) return &*it;
