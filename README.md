@@ -76,6 +76,7 @@ make
 ### GUI (ImGui)
 
 ```bash
+./cache_scope report report.json
 ./cache_scope_gui report.json
 ```
 

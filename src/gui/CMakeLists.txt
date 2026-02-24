@@ -15,6 +15,23 @@ else()
     ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
     ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
   )
+add_library(gui
+  ReportGUI.cpp
+)
+
+target_link_libraries(gui
+  PUBLIC
+    cache_scope_includes
+    imgui
+)
+
+  target_include_directories(gui
+    PUBLIC
+      ${IMGUI_DIR}
+      ${IMGUI_DIR}/backends
+  )
+
+  target_link_libraries(gui PUBLIC glfw OpenGL::GL)
 
   target_include_directories(imgui
     PUBLIC
@@ -26,6 +43,4 @@ else()
     target_link_libraries(imgui PUBLIC dl)
   endif()
 
-  add_executable(cache_scope_gui main.cpp)
-  target_link_libraries(cache_scope_gui PRIVATE imgui)
 endif()

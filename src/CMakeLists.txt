@@ -16,3 +16,8 @@ target_link_libraries(cache_scope
     runtime
     cache_scope_includes
 )
+
+if (CACHESCOPE_BUILD_GUI)
+  target_link_libraries(cache_scope PRIVATE gui)
+  target_compile_definitions(cache_scope PRIVATE CACHESCOPE_BUILD_GUI)
+endif()

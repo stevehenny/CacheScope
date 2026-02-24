@@ -26,6 +26,9 @@
 #include "runtime/Parser.hpp"
 #include "runtime/PerfEventRecorder.hpp"
 #include "runtime/SampleStats.hpp"
+#ifdef CACHESCOPE_BUILD_GUI
+#include "gui/ReportGUI.hpp"
+#endif
 
 static const DwarfGlobalObject* find_global_for_addr(
   const std::vector<StaticRange>& ranges, int64_t addr, int64_t& base_out) {
@@ -133,10 +136,29 @@ int main(int argc, char* argv[]) {
   int sample_rate              = 10000;
   std::string report_md_path   = "cache_scope.md";
   std::string report_json_path = "cache_scope.json";
+  std::string report_gui_path  = "cache_scope.json";
 
   auto* report = app.add_subcommand(
     "report",
     "Generate gui report from json file. Default is cache_scope.json");
+#ifdef CACHESCOPE_BUILD_GUI
+  report->add_option("report_json", report_gui_path,
+                     "JSON report to display (default: cache_scope.json)");
+  report->callback([&]() {
+    ReportGUI gui;
+    std::string error;
+    if (!gui.init(error)) {
+      std::cerr << error << "\n";
+      return;
+    }
+    gui.render(report_gui_path);
+  });
+#else
+  report->callback([&]() {
+    std::cerr
+      << "GUI support disabled. Rebuild with -DCACHESCOPE_BUILD_GUI=ON\n";
+  });
+#endif
 
   auto* analyze = app.add_subcommand("analyze", "Analyze cache behavior");
   analyze->add_option("binary", binary)->required()->check(CLI::ExistingFile);
