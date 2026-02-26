@@ -2,37 +2,17 @@
 #include <unistd.h>
 
 #include <CLI/CLI.hpp>
-#include <algorithm>
-#include <array>
 #include <cctype>
 #include <cstdio>
-#include <filesystem>
-#include <format>
-#include <fstream>
 #include <iostream>
-#include <memory>
-#include <optional>
-#include <ranges>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
-#include <vector>
 
 #include "analysis/AnalyzeCommand.hpp"
-#include "common/Types.hpp"
-#include "dwarf/Extractor.hpp"
-#include "report/JsonReport.hpp"
-#include "report/TextReport.hpp"
-#include "runtime/FalseSharingAnalysis.hpp"
 #include "runtime/Parser.hpp"
 #include "runtime/PerfEventRecorder.hpp"
-#include "runtime/SampleStats.hpp"
 #ifdef CACHESCOPE_BUILD_GUI
 #include "gui/ReportGUI.hpp"
 #endif
-
-
-// Statistics helper
 
 int main(int argc, char* argv[]) {
   CLI::App app("CacheScope: Analyze and visualize CPU cache behavior");
