@@ -25,7 +25,7 @@ jobs:
       - name: Package
         run: |
           mkdir dist
-          cp build/cachescope_cli dist/cachescope
+          cp build/cache_scope dist/cachescope
           tar czvf cachescope-linux-amd64.tar.gz -C dist cachescope
 
       - name: Create Release
