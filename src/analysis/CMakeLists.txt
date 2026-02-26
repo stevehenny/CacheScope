@@ -1,5 +1,4 @@
 add_library(analysis
-  Analyzer.cpp
   AnalyzeCommand.cpp
 )
 
