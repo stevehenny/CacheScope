@@ -5,34 +5,45 @@ on:
     tags:
       - "v*"
 
-
 permissions:
   contents: write
-
 
 jobs:
   build-linux:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
       - name: Install dependencies
-        run: sudo apt update && sudo apt install -y cmake build-essential libcli11-dev libdwarf-dev libelf-dev libpfm4-dev libglfw3-dev libgl1-mesa-dev
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            cmake build-essential \
+            libcli11-dev libdwarf-dev libelf-dev \
+            libpfm4-dev libglfw3-dev libgl1-mesa-dev \
+            rpm
 
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCACHESCOPE_BUILD_GUI=ON
 
       - name: Build
-        run: cmake --build build --target cache_scope -- -j$(nproc)
+        run: cmake --build build -- -j$(nproc)
 
-      - name: Package DEB
+      - name: Generate Packages
         run: |
           cd build
           cpack -G DEB
+          cpack -G RPM
+
+      - name: List generated files
+        run: ls -lh build
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: cachescope-linux-amd64.tar.gz
+          files: |
+            build/*.deb
+            build/*.rpm
