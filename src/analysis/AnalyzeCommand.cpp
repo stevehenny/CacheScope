@@ -119,10 +119,10 @@ AnalyzeCommand::AnalyzeCommand(Parser& parser, PerfEventRecorder& recorder)
   : parser_(parser), recorder_(recorder) {}
 
 void AnalyzeCommand::run(const AnalyzeOptions& options) {
-  const std::string& binary         = options.binary;
-  const std::string& default_events = options.events;
-  const int sample_rate             = options.sample_rate;
-  const std::string& report_md_path = options.report_md_path;
+  const std::string& binary           = options.binary;
+  const std::string& default_events   = options.events;
+  const int sample_rate               = options.sample_rate;
+  const std::string& report_md_path   = options.report_md_path;
   const std::string& report_json_path = options.report_json_path;
   const bool verbose                  = options.verbose;
 
@@ -130,6 +130,12 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
   std::cout << "=== Phase 1: DWARF Analysis ===\n";
   Extractor ext{binary};
   ext.create_registry();
+  if (ext.get_registry().get_map().empty()) {
+    std::cerr
+      << "No DWARF information found. Ensure the binary is compiled with "
+         "-g and has not been stripped.\n";
+    return;
+  }
 
   if (verbose) {
     for (const auto& [k, v] : ext.get_registry().get_map()) {
@@ -212,9 +218,8 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
   FalseSharingAnalysis::print(hot_lines);
 
   if (!report_md_path.empty() || !report_json_path.empty()) {
-    Report report =
-      Report::from_false_sharing(binary, default_events, sample_rate, stats,
-                                 hot_lines);
+    Report report = Report::from_false_sharing(binary, default_events,
+                                               sample_rate, stats, hot_lines);
 
     if (!report_md_path.empty()) {
       std::ofstream out(report_md_path);
@@ -238,8 +243,7 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
       } else {
         JsonReport::write(out, report);
         if (verbose) {
-          std::cout << std::format("Wrote JSON report: {}\n",
-                                   report_json_path);
+          std::cout << std::format("Wrote JSON report: {}\n", report_json_path);
         }
       }
     }
@@ -384,13 +388,13 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
   size_t cfa_miss = 0;
 
   for (const auto& s : samples) {
-    if (!have_frames || s.ip == 0 || s.sp == 0 || s.addr == 0 || s.symbol.empty())
+    if (!have_frames || s.ip == 0 || s.sp == 0 || s.addr == 0 ||
+        s.symbol.empty())
       continue;
 
     // Only do stack attribution when IP is from the target binary.
-    if (s.dso.empty() ||
-        (s.dso.find(bin_name) == std::string::npos &&
-         s.dso.find(binary) == std::string::npos))
+    if (s.dso.empty() || (s.dso.find(bin_name) == std::string::npos &&
+                          s.dso.find(binary) == std::string::npos))
       continue;
 
     auto fn = std::string(parser_.base_symbol(s.symbol));
@@ -407,8 +411,7 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
     // Try raw runtime IP first (non-PIE / already-relocated FDEs)
     cfa = try_cfa(s.ip);
     // Then try subtracting known/perf-inferred biases.
-    if (!cfa && load_bias && s.ip >= load_bias)
-      cfa = try_cfa(s.ip - load_bias);
+    if (!cfa && load_bias && s.ip >= load_bias) cfa = try_cfa(s.ip - load_bias);
     if (!cfa && inferred_bias && s.ip >= inferred_bias)
       cfa = try_cfa(s.ip - inferred_bias);
 
@@ -436,7 +439,8 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
   // NOTE: Keep FDE/CIE data alive for Phase 6/7 (we also need CFA there).
 
   if (verbose) {
-    std::cout << std::format("CFA computed: {}  CFA miss: {}\n", cfa_ok, cfa_miss);
+    std::cout << std::format("CFA computed: {}  CFA miss: {}\n", cfa_ok,
+                             cfa_miss);
   }
 
   std::cout << std::format("Stack-attributed samples: {} / {}\n\n", stack_hits,
@@ -489,9 +493,8 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
   bin_samples.reserve(samples.size());
   for (const auto& s : samples) {
     if (s.addr == 0) continue;
-    if (!s.dso.empty() &&
-        (s.dso.find(bin_name) == std::string::npos &&
-         s.dso.find(binary) == std::string::npos))
+    if (!s.dso.empty() && (s.dso.find(bin_name) == std::string::npos &&
+                           s.dso.find(binary) == std::string::npos))
       continue;
     bin_samples.push_back(&s);
   }
@@ -544,8 +547,7 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
 
     std::optional<int64_t> cfa;
     cfa = try_cfa(s.ip);
-    if (!cfa && load_bias && s.ip >= load_bias)
-      cfa = try_cfa(s.ip - load_bias);
+    if (!cfa && load_bias && s.ip >= load_bias) cfa = try_cfa(s.ip - load_bias);
     if (!cfa && inferred_bias && s.ip >= inferred_bias)
       cfa = try_cfa(s.ip - inferred_bias);
     if (!cfa) continue;
