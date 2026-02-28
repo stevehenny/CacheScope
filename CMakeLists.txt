@@ -43,3 +43,14 @@ target_compile_definitions(cache_scope_includes
 )
 
 add_subdirectory(src)
+
+include(InstallRequiredSystemLibraries)
+
+set(CPACK_PACKAGE_NAME "cachescope")
+set(CPACK_PACKAGE_VERSION "0.0.0")
+set(CPACK_GENERATOR "DEB;RPM")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Stephen Henstrom")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>=2.31)")
+
+include(CPack)
+install(TARGETS cache_scope DESTINATION bin)

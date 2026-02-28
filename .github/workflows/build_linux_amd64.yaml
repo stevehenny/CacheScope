@@ -27,11 +27,10 @@ jobs:
       - name: Build
         run: cmake --build build --target cache_scope -- -j$(nproc)
 
-      - name: Package
+      - name: Package DEB
         run: |
-          mkdir dist
-          cp build/src/cache_scope dist/cachescope
-          tar czvf cachescope-linux-amd64.tar.gz -C dist cachescope
+          cd build
+          cpack -G DEB
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
