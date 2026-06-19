@@ -27,5 +27,6 @@ public:
   PerfRecordResult record(const std::string& binary,
                           const std::string& event_spec, int sample_period,
                           bool verbose);
+
   static std::vector<std::string> split_event_spec(std::string_view spec);
 };
