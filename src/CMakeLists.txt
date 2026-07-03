@@ -1,6 +1,5 @@
 add_executable(cache_scope main.cpp)
 
-add_subdirectory(common)
 add_subdirectory(dwarf)
 add_subdirectory(analysis)
 add_subdirectory(runtime)
@@ -15,7 +14,6 @@ target_link_libraries(cache_scope
     cachescope_dwarf
     analysis
     runtime
-    common
     cache_scope_includes
 )
 
