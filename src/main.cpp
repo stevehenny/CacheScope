@@ -26,7 +26,7 @@ int main(int argc, char* argv[]) {
   AnalyzeCommand analyze_cmd(parser, recorder);
   std::string binary;
   std::string default_events   = parser.get_default_mem_events();
-  int sample_rate              = 1000;
+  int sample_rate              = 10000;
   std::string report_md_path   = "cache_scope.md";
   std::string report_json_path = "cache_scope.json";
   std::string report_gui_path  = "cache_scope.json";
