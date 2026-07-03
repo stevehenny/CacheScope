@@ -9,6 +9,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <ctime>
+
 #include "runtime/PerfEventRecorder.hpp"
 
 #if defined(__x86_64__) || defined(__i386__)
@@ -173,7 +175,7 @@ bool is_ibs_op_event(std::string_view name) {
 }
 
 bool setup_event(pid_t pid, const std::string& name, int sample_period, int cpu,
-                 PerfEventHandle& out, std::string& error) {
+                 bool inherit, PerfEventHandle& out, std::string& error) {
   std::memset(&out.attr, 0, sizeof(out.attr));
   if (!encode_event(name, out.attr, error)) return false;
 
@@ -191,7 +193,7 @@ bool setup_event(pid_t pid, const std::string& name, int sample_period, int cpu,
   out.attr.disabled       = 1;
   out.attr.exclude_kernel = ibs_op ? 0 : 1;
   out.attr.exclude_hv     = ibs_op ? 0 : 1;
-  out.attr.inherit        = 1;
+  out.attr.inherit        = inherit ? 1 : 0;
   out.attr.precise_ip     = ibs_op ? 0 : 2;
 
 #if defined(__x86_64__) || defined(__i386__)

@@ -54,7 +54,7 @@ struct PerfEventHandle {
 };
 
 bool setup_event(pid_t pid, const std::string& name, int sample_period, int cpu,
-                 PerfEventHandle& out, std::string& error);
+                 bool inherit, PerfEventHandle& out, std::string& error);
 
 void teardown_event(PerfEventHandle& ev);
 

@@ -1,7 +1,9 @@
 #include "analysis/AnalyzeCommand.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cctype>
+#include <exception>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -10,6 +12,7 @@
 #include <optional>
 #include <ranges>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -23,6 +26,74 @@
 #include "runtime/SampleStats.hpp"
 
 namespace {
+
+std::optional<std::string> resolve_binary_from_pid(pid_t pid,
+                                                   std::string& error) {
+  try {
+    return std::filesystem::read_symlink(
+             std::format("/proc/{}/exe", pid))
+      .string();
+  } catch (const std::exception& e) {
+    error = std::format("Failed to resolve executable for pid {}: {}", pid,
+                       e.what());
+    return std::nullopt;
+  }
+}
+
+void render_live_monitor(const std::string& binary, pid_t pid,
+                         const std::string& event,
+                         const std::vector<PerfSample>& samples,
+                         bool done,
+                         std::chrono::steady_clock::time_point started_at) {
+  const auto now =
+    std::chrono::steady_clock::now();
+  const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+                         now - started_at)
+                         .count();
+  const auto stats = SampleStats::compute(samples);
+  const auto hot_lines = FalseSharingAnalysis::find_hot_cache_lines(samples);
+
+  std::cout << "\033[2J\033[H";
+  std::cout << "=== Live Monitor ===\n";
+  std::cout << std::format("PID: {}  Binary: {}\n", pid, binary);
+  std::cout << std::format("Event: {}  Elapsed: {}s\n", event, elapsed);
+  std::cout << std::format(
+    "Samples: {}  With address: {}  With IP: {}\n", stats.total_samples,
+    stats.samples_with_addr, stats.samples_with_ip);
+  std::cout << std::format("Threads: {}  CPUs: {}\n", stats.unique_threads,
+                           stats.unique_cpus);
+
+  if (hot_lines.empty()) {
+    std::cout << "False-sharing confidence: none yet\n";
+  } else {
+    std::cout << "Top cache lines:\n";
+    for (size_t i = 0; i < std::min<size_t>(hot_lines.size(), 3); ++i) {
+      const auto& line = hot_lines[i];
+      std::vector<uint32_t> tids = line.tids;
+      std::sort(tids.begin(), tids.end());
+      tids.erase(std::unique(tids.begin(), tids.end()), tids.end());
+
+      std::vector<int64_t> offsets;
+      offsets.reserve(line.addrs.size());
+      for (auto a : line.addrs) offsets.push_back(a - line.base_addr);
+      std::sort(offsets.begin(), offsets.end());
+      offsets.erase(std::unique(offsets.begin(), offsets.end()), offsets.end());
+
+      const double confidence =
+        line.bounce_score * line.private_offset_fraction;
+      std::cout << std::format(
+        "  #{} 0x{:x}  confidence={:.3f}  samples={}  reads={}  writes={}  "
+        "threads={}  offsets={}  shared={}  private={:.2f}  bounce={:.3f}\n",
+        i + 1, line.base_addr, confidence, line.sample_count, line.sample_reads,
+        line.sample_writes, tids.size(), offsets.size(),
+        line.shared_offset_count, line.private_offset_fraction,
+        line.bounce_score);
+    }
+  }
+
+  std::cout << std::format("State: {}\n", done ? "complete" : "running");
+  std::cout << std::flush;
+}
 
 const DwarfGlobalObject* find_global_for_addr(
   const std::vector<StaticRange>& ranges, int64_t addr, int64_t& base_out) {
@@ -119,46 +190,108 @@ AnalyzeCommand::AnalyzeCommand(Parser& parser, PerfEventRecorder& recorder)
   : parser_(parser), recorder_(recorder) {}
 
 void AnalyzeCommand::run(const AnalyzeOptions& options) {
-  const std::string& binary           = options.binary;
+  std::string binary                  = options.binary;
   const std::string& default_events   = options.events;
   const int sample_rate               = options.sample_rate;
   const std::string& report_md_path   = options.report_md_path;
   const std::string& report_json_path = options.report_json_path;
   const bool verbose                  = options.verbose;
+  const bool monitoring               = options.pid.has_value();
+  std::unique_ptr<Extractor> ext;
+  std::vector<DwarfStackObject> stack_objects;
 
-  // Phase 1: DWARF extraction
-  std::cout << "=== Phase 1: DWARF Analysis ===\n";
-  Extractor ext{binary};
-  ext.create_registry();
-  if (ext.get_registry().get_map().empty()) {
-    std::cerr
-      << "No DWARF information found. Ensure the binary is compiled with "
-         "-g and has not been stripped.\n";
-    return;
-  }
-
-  if (verbose) {
-    for (const auto& [k, v] : ext.get_registry().get_map()) {
-      std::cout << std::format("{}: {} bytes\n", k, v.size);
+  if (monitoring) {
+    if (*options.pid <= 0) {
+      std::cerr << "Monitor pid must be positive\n";
+      return;
+    }
+    if (binary.empty()) {
+      std::string resolve_error;
+      auto resolved = resolve_binary_from_pid(*options.pid, resolve_error);
+      if (!resolved) {
+        std::cerr << resolve_error << "\n";
+        return;
+      }
+      binary = std::move(*resolved);
     }
   }
 
-  const auto& stack_objects = ext.get_stack_objects();
-  std::cout << std::format("Found {} stack objects\n\n", stack_objects.size());
+  if (binary.empty()) {
+    std::cerr << "No binary provided\n";
+    return;
+  }
+
+  // Phase 1: DWARF extraction
+  if (monitoring) {
+   std::cout << "=== Phase 1: DWARF Analysis (skipped in monitor mode) ===\n\n";
+  } else {
+   std::cout << "=== Phase 1: DWARF Analysis ===\n";
+   ext = std::make_unique<Extractor>(binary);
+   ext->create_registry();
+   if (ext->get_registry().get_map().empty()) {
+     std::cerr
+       << "No DWARF information found. Ensure the binary is compiled with "
+          "-g and has not been stripped.\n";
+     return;
+   }
+
+   if (verbose) {
+     for (const auto& [k, v] : ext->get_registry().get_map()) {
+       std::cout << std::format("{}: {} bytes\n", k, v.size);
+     }
+   }
+
+   stack_objects = ext->get_stack_objects();
+   std::cout << std::format("Found {} stack objects\n\n",
+                            stack_objects.size());
+  }
 
   // Phase 2: Run perf record
-  std::cout << "=== Phase 2: Performance Recording ===\n";
   std::cout << std::format(
-    "Recording {} with event '{}' (period={}) via perf_event_open\n", binary,
-    default_events, sample_rate);
+    "=== Phase 2: Performance {} ===\n",
+    monitoring ? "Monitoring" : "Recording");
+  if (monitoring) {
+    std::cout << std::format(
+      "Monitoring pid {} ({}) with event '{}' (period={}) via "
+      "perf_event_open\n",
+      *options.pid, binary, default_events, sample_rate);
+  } else {
+    std::cout << std::format(
+      "Recording {} with event '{}' (period={}) via perf_event_open\n",
+      binary, default_events, sample_rate);
+  }
 
-  auto record = recorder_.record(binary, default_events, sample_rate, verbose);
+  const auto monitor_started_at = std::chrono::steady_clock::now();
+  auto monitor_last_render_at   = monitor_started_at;
+  bool monitor_first_render = true;
+
+  auto record = monitoring
+                  ? recorder_.record_pid(
+                      *options.pid, binary, default_events, sample_rate, verbose,
+                      [&](const std::vector<PerfSample>& samples,
+                          size_t new_samples, bool done) {
+                        const auto now = std::chrono::steady_clock::now();
+                        if (!monitor_first_render && !done &&
+                            now - monitor_last_render_at <
+                              std::chrono::seconds(1)) {
+                          return;
+                        }
+                        if (monitor_first_render) monitor_first_render = false;
+                        monitor_last_render_at = now;
+                        render_live_monitor(binary, *options.pid, default_events,
+                                            samples, done,
+                                            monitor_started_at);
+                        (void)new_samples;
+                      })
+                  : recorder_.record_binary(binary, default_events,
+                                            sample_rate, verbose);
   if (!record.ok()) {
     std::cerr << std::format("Perf recording failed: {}\n", record.error);
     return;
   }
 
-  std::cout << "Recording completed\n\n";
+  std::cout << (monitoring ? "Monitoring completed\n\n"
+                           : "Recording completed\n\n");
 
   // Phase 3: Parse samples
   std::cout << "=== Phase 3: Sample Parsing ===\n";
@@ -247,6 +380,10 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
         }
       }
     }
+  }
+
+  if (monitoring) {
+    return;
   }
 
   // Phase 5: Runtime attribution (stack locals)
@@ -342,7 +479,7 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
     }
   }
 
-  auto fn_ranges = ext.get_function_ranges();
+  auto fn_ranges = ext->get_function_ranges();
   std::ranges::sort(fn_ranges, [](const auto& a, const auto& b) {
     if (a.low_pc != b.low_pc) return a.low_pc < b.low_pc;
     return a.high_pc < b.high_pc;
@@ -464,7 +601,7 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
   // Phase 6: Static attribution (globals) + bridge to struct fields
   std::cout << "=== Phase 6: Static Attribution ===\n";
 
-  const auto& globals = ext.get_global_objects();
+  const auto& globals = ext->get_global_objects();
   std::vector<StaticRange> global_ranges;
   global_ranges.reserve(globals.size());
 
