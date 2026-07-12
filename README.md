@@ -60,6 +60,13 @@ CacheScope fills this gap, giving developers actionable insights to optimize cac
 ./cache_scope analyze ./my_binary --report-md report.md --report-json report.json
 ```
 
+```bash
+./cache_scope monitor <pid> --report-md report.md --report-json report.json
+```
+
+Monitor mode attaches to a running process and skips DWARF-dependent
+attribution; it currently focuses on live sampling and cache-line reporting.
+
 ---
 
 ## **Installation**

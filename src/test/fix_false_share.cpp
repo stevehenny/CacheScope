@@ -1,10 +1,10 @@
 
 #include <atomic>
-#include <iostream>
+#include <new>
 #include <thread>
 #include <vector>
 
-struct alignas(64) PaddedCounter {
+struct alignas(std::hardware_constructive_interference_size) PaddedCounter {
   std::atomic<int> value;
 };
 

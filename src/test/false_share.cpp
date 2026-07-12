@@ -11,7 +11,6 @@ struct Counters {
 };
 
 Counters counters;
-Counters counters2;
 
 void thread_method(int id) {
   for (int i = 0; i < 100'000'000; ++i) {

@@ -1,13 +1,13 @@
 {
   "metadata": {
-    "binary": "build/src/test/false_share",
+    "binary": "./build/src/test/false_share",
     "event": "ibs_op",
-    "sample_period": 1000
+    "sample_period": 10000
   },
   "sample_stats": {
-    "total_samples": 169793,
-    "samples_with_address": 75774,
-    "samples_with_ip": 169793,
+    "total_samples": 995511,
+    "samples_with_address": 465888,
+    "samples_with_ip": 995511,
     "samples_with_sp": 0,
     "samples_with_bp": 0,
     "unique_threads": 5,
@@ -16,20 +16,20 @@
   "false_sharing": [
     {
       "index": 1,
-      "base_addr": "0x62b5cefbc000",
-      "samples": 6951,
-      "reads": 6951,
+      "base_addr": "0x6266cd543000",
+      "samples": 45365,
+      "reads": 45365,
       "writes": 0,
       "threads": 4,
       "distinct_offsets": 4,
       "shared_offsets": 0,
       "private_offset_fraction": 1.0000,
       "top_offsets": 4,
-      "thread_switches": 2557,
-      "bounce_score": 0.3679,
+      "thread_switches": 34321,
+      "bounce_score": 0.7566,
       "address_range": {
-        "min": "0x62b5cefbc030",
-        "max": "0x62b5cefbc03c",
+        "min": "0x6266cd543030",
+        "max": "0x6266cd54303c",
         "bytes": 12
       }
     }
