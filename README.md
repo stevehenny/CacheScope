@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/CacheScope.png" alt="CacheScope logo" width="420">
+</p>
+
 # CacheScope
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)  
@@ -7,7 +11,6 @@
 
 **CacheScope** is a visualization and analysis tool for cache line bouncing and false sharing in multithreaded C++ programs.  
 It helps developers identify performance-critical areas where threads contend on the same cache lines, enabling optimization of data structures and memory access patterns.
-
 
 ##Dependencies
 
@@ -58,39 +61,3 @@ CacheScope fills this gap, giving developers actionable insights to optimize cac
 
 ```bash
 ./cache_scope analyze ./my_binary --report-md report.md --report-json report.json
-```
-
-```bash
-./cache_scope monitor <pid> --report-md report.md --report-json report.json
-```
-
-Monitor mode attaches to a running process and skips DWARF-dependent
-attribution; it currently focuses on live sampling and cache-line reporting.
-
----
-
-## **Installation**
-
-```bash
-git clone https://github.com/yourusername/CacheScope.git
-cd CacheScope
-git submodule update --init --recursive
-mkdir build && cd build
-cmake ..
-make
-```
-
-### GUI (ImGui)
-
-```bash
-./cache_scope report report.json
-./cache_scope_gui report.json
-```
-
-Disable the GUI build with `-DCACHESCOPE_BUILD_GUI=OFF` if you only want the CLI.
-
-### Notes for stack-variable attribution
-
-To get non-zero **Stack-attributed samples**, build the *target program you are analyzing* with debug info (`-g`) and avoid stripping symbols.
-
-CacheScope uses DWARF CFI (`.eh_frame`/`.debug_frame`) to compute CFA at each sample, so frame pointers are not required.
