@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/CacheScope.png" alt="CacheScope logo" width="420">
+  <img src="assets/CacheScope.png" alt="CacheScope logo" width="800">
 </p>
 
 # CacheScope
