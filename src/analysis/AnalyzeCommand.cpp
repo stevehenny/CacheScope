@@ -23,7 +23,9 @@
 #include "report/JsonReport.hpp"
 #include "report/TextReport.hpp"
 #include "runtime/FalseSharingAnalysis.hpp"
+#include "runtime/CacheTopology.hpp"
 #include "runtime/SampleStats.hpp"
+#include "runtime/Thrashing.hpp"
 
 namespace {
 
@@ -43,6 +45,7 @@ std::optional<std::string> resolve_binary_from_pid(pid_t pid,
 void render_live_monitor(const std::string& binary, pid_t pid,
                          const std::string& event,
                          const std::vector<PerfSample>& samples,
+                         const std::vector<CacheInfo>& caches,
                          bool done,
                          std::chrono::steady_clock::time_point started_at) {
   const auto now =
@@ -52,6 +55,8 @@ void render_live_monitor(const std::string& binary, pid_t pid,
                          .count();
   const auto stats = SampleStats::compute(samples);
   const auto hot_lines = FalseSharingAnalysis::find_hot_cache_lines(samples);
+  const auto thrashing =
+    ThrashingAnalysis::detect(samples, caches);
 
   std::cout << "\033[2J\033[H";
   std::cout << "=== Live Monitor ===\n";
@@ -89,6 +94,17 @@ void render_live_monitor(const std::string& binary, pid_t pid,
         line.shared_offset_count, line.private_offset_fraction,
         line.bounce_score);
     }
+  }
+
+  if (thrashing.empty()) {
+    std::cout << "Cache-thrashing confidence: none yet\n";
+  } else {
+    const auto& top = thrashing.front();
+    std::cout << std::format(
+      "Top thrashing episode: L{} {} / set {} / CPUs {}  score={:.3f}  "
+      "reloads={}/{}  lines={}\n",
+      top.cache_level, top.cache_type, top.cache_set, top.shared_cpu_list,
+      top.score, top.eviction_reloads, top.evictions, top.unique_lines);
   }
 
   std::cout << std::format("State: {}\n", done ? "complete" : "running");
@@ -199,6 +215,7 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
   const bool monitoring               = options.pid.has_value();
   std::unique_ptr<Extractor> ext;
   std::vector<DwarfStackObject> stack_objects;
+  const auto cache_topology = CacheTopology::discover();
 
   if (monitoring) {
     if (*options.pid <= 0) {
@@ -279,7 +296,7 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
                         if (monitor_first_render) monitor_first_render = false;
                         monitor_last_render_at = now;
                         render_live_monitor(binary, *options.pid, default_events,
-                                            samples, done,
+                                            samples, cache_topology, done,
                                             monitor_started_at);
                         (void)new_samples;
                       })
@@ -342,17 +359,20 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
   if (verbose || samples.size() <= 20) {
     std::cout << "\n=== Sample Preview ===\n";
     for (size_t i = 0; i < std::min(samples.size(), size_t{10}); ++i) {
-      std::cout << std::format("Sample #{}:\n{}\n", i + 1, samples[i].symbol);
+      std::cout << std::format("Sample #{}:\n", i + 1) << samples[i] << "\n";
     }
   }
 
   // Phase 4: False sharing analysis
   auto hot_lines = FalseSharingAnalysis::find_hot_cache_lines(samples);
   FalseSharingAnalysis::print(hot_lines);
+  auto thrashing = ThrashingAnalysis::detect(samples, cache_topology);
+  ThrashingAnalysis::print(thrashing, cache_topology);
 
   if (!report_md_path.empty() || !report_json_path.empty()) {
-    Report report = Report::from_false_sharing(binary, default_events,
-                                               sample_rate, stats, hot_lines);
+    Report report = Report::from_analysis(
+      binary, default_events, sample_rate, stats, hot_lines, thrashing,
+      cache_topology);
 
     if (!report_md_path.empty()) {
       std::ofstream out(report_md_path);

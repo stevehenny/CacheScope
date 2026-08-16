@@ -15,6 +15,8 @@ SampleStats SampleStats::compute(const std::vector<PerfSample>& samples) {
 
   for (const auto& sample : samples) {
     if (sample.addr != 0) s.samples_with_addr++;
+    if (sample.addr != 0 && sample.phys_addr != 0)
+      s.samples_with_phys_addr++;
     if (sample.ip != 0) s.samples_with_ip++;
     if (sample.sp != 0) s.samples_with_sp++;
     if (sample.bp != 0) s.samples_with_bp++;
@@ -38,13 +40,17 @@ std::ostream& operator<<(std::ostream& os, const SampleStats& s) {
            "\n=== Sample Statistics ===\n"
            "Total samples: {}\n"
            "Samples with address: {} ({:.1f}%)\n"
+           "Samples with physical address: {} ({:.1f}%)\n"
            "Samples with IP: {} ({:.1f}%)\n"
            "Samples with SP: {} ({:.1f}%)\n"
            "Samples with BP: {} ({:.1f}%)\n"
            "Unique threads: {}\n"
            "Unique CPUs: {}\n",
            s.total_samples, s.samples_with_addr,
-           100.0 * s.samples_with_addr / s.total_samples, s.samples_with_ip,
+           100.0 * s.samples_with_addr / s.total_samples,
+           s.samples_with_phys_addr,
+           100.0 * s.samples_with_phys_addr / s.total_samples,
+           s.samples_with_ip,
            100.0 * s.samples_with_ip / s.total_samples, s.samples_with_sp,
            100.0 * s.samples_with_sp / s.total_samples, s.samples_with_bp,
            100.0 * s.samples_with_bp / s.total_samples, s.unique_threads,

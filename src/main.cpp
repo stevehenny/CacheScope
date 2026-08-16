@@ -36,9 +36,9 @@ int main(int argc, char* argv[]) {
                            "Perf event to record");
     subcommand->add_option("-c,--count", sample_rate, "Sample period");
     subcommand->add_option("--report-md", report_md_path,
-                           "Write false sharing report to Markdown file");
+                           "Write cache analysis report to Markdown file");
     subcommand->add_option("--report-json", report_json_path,
-                           "Write false sharing report to JSON file");
+                           "Write cache analysis report to JSON file");
   };
 
   auto* report = app.add_subcommand(

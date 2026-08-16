@@ -59,11 +59,35 @@ inline void JsonReport::write(std::ostream& os, const Report& report) {
   os << std::format("    \"sample_period\": {}\n", report.metadata.sample_rate);
   os << "  },\n";
 
+  os << "  \"cache_topology\": [\n";
+  for (size_t i = 0; i < report.cache_topology.size(); ++i) {
+    const auto& cache = report.cache_topology[i];
+    os << "    {\n";
+    os << std::format("      \"level\": {},\n", cache.level);
+    os << std::format("      \"id\": {},\n", cache.id);
+    os << std::format("      \"type\": \"{}\",\n",
+                      escape_json(cache.type));
+    os << std::format("      \"size_bytes\": {},\n", cache.size_bytes);
+    os << std::format("      \"line_size\": {},\n", cache.line_size);
+    os << std::format("      \"sets\": {},\n", cache.sets);
+    os << std::format("      \"ways\": {},\n", cache.associativity);
+    os << std::format("      \"shared_cpu_list\": \"{}\",\n",
+                      escape_json(cache.shared_cpu_list));
+    os << std::format("      \"detected\": {}\n",
+                      cache.detected_from_sysfs ? "true" : "false");
+    os << "    }";
+    if (i + 1 < report.cache_topology.size()) os << ",";
+    os << "\n";
+  }
+  os << "  ],\n";
+
   os << "  \"sample_stats\": {\n";
   os << std::format("    \"total_samples\": {},\n",
                     report.stats.total_samples);
   os << std::format("    \"samples_with_address\": {},\n",
                     report.stats.samples_with_addr);
+  os << std::format("    \"samples_with_physical_address\": {},\n",
+                    report.stats.samples_with_phys_addr);
   os << std::format("    \"samples_with_ip\": {},\n",
                     report.stats.samples_with_ip);
   os << std::format("    \"samples_with_sp\": {},\n",
@@ -106,6 +130,44 @@ inline void JsonReport::write(std::ostream& os, const Report& report) {
     os << "      }\n";
     os << "    }";
     if (i + 1 < report.false_sharing.size()) os << ",";
+    os << "\n";
+  }
+  os << "  ],\n";
+
+  os << "  \"cache_thrashing\": [\n";
+  for (size_t i = 0; i < report.cache_thrashing.size(); ++i) {
+    const auto& entry = report.cache_thrashing[i];
+    os << "    {\n";
+    os << std::format("      \"index\": {},\n", entry.index);
+    os << std::format("      \"cache_level\": {},\n",
+                      entry.cache_level);
+    os << std::format("      \"cache_id\": {},\n", entry.cache_id);
+    os << std::format("      \"cache_type\": \"{}\",\n",
+                      escape_json(entry.cache_type));
+    os << std::format("      \"shared_cpu_list\": \"{}\",\n",
+                      escape_json(entry.shared_cpu_list));
+    os << std::format("      \"address_basis\": \"{}\",\n",
+                      escape_json(entry.address_basis));
+    os << std::format("      \"cache_set\": {},\n", entry.cache_set);
+    os << std::format("      \"start_time_ns\": {},\n",
+                      entry.start_time_ns);
+    os << std::format("      \"end_time_ns\": {},\n", entry.end_time_ns);
+    os << std::format("      \"duration_ns\": {},\n", entry.duration_ns);
+    os << std::format("      \"samples\": {},\n", entry.sample_count);
+    os << std::format("      \"unique_lines\": {},\n",
+                      entry.unique_lines);
+    os << std::format("      \"evictions\": {},\n", entry.evictions);
+    os << std::format("      \"eviction_reloads\": {},\n",
+                      entry.eviction_reloads);
+    os << std::format("      \"threads\": {},\n", entry.unique_threads);
+    os << std::format("      \"cpus\": {},\n", entry.unique_cpus);
+    os << std::format("      \"reload_ratio\": {:.4f},\n",
+                      entry.reload_ratio);
+    os << std::format("      \"oversubscription\": {:.4f},\n",
+                      entry.oversubscription);
+    os << std::format("      \"score\": {:.4f}\n", entry.score);
+    os << "    }";
+    if (i + 1 < report.cache_thrashing.size()) os << ",";
     os << "\n";
   }
   os << "  ]\n";

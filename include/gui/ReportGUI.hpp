@@ -23,12 +23,25 @@ struct ReportData {
   struct SampleStats {
     size_t total_samples        = 0;
     size_t samples_with_address = 0;
+    size_t samples_with_physical_address = 0;
     size_t samples_with_ip      = 0;
     size_t samples_with_sp      = 0;
     size_t samples_with_bp      = 0;
     size_t unique_threads       = 0;
     size_t unique_cpus          = 0;
   } stats;
+
+  struct CacheInfo {
+    int level              = 0;
+    int id                 = 0;
+    std::string type;
+    size_t size_bytes      = 0;
+    size_t line_size       = 0;
+    size_t sets            = 0;
+    size_t ways            = 0;
+    std::string shared_cpu_list;
+    bool detected = false;
+  };
 
   struct FalseSharingEntry {
     size_t index = 0;
@@ -48,7 +61,31 @@ struct ReportData {
     int64_t range_bytes = 0;
   };
 
+  struct ThrashingEntry {
+    size_t index = 0;
+    int cache_level = 0;
+    int cache_id = 0;
+    std::string cache_type;
+    std::string shared_cpu_list;
+    std::string address_basis;
+    size_t cache_set = 0;
+    int64_t start_time_ns = 0;
+    int64_t end_time_ns = 0;
+    int64_t duration_ns = 0;
+    size_t samples = 0;
+    size_t unique_lines = 0;
+    size_t evictions = 0;
+    size_t eviction_reloads = 0;
+    size_t threads = 0;
+    size_t cpus = 0;
+    double reload_ratio = 0.0;
+    double oversubscription = 0.0;
+    double score = 0.0;
+  };
+
+  std::vector<CacheInfo> cache_topology;
   std::vector<FalseSharingEntry> false_sharing;
+  std::vector<ThrashingEntry> cache_thrashing;
 };
 
 class ReportGUI {

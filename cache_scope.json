@@ -1,37 +1,330 @@
 {
   "metadata": {
-    "binary": "./build/src/test/false_share",
+    "binary": "build/src/test/cache_thrash",
     "event": "ibs_op",
     "sample_period": 10000
   },
+  "cache_topology": [
+    {
+      "level": 1,
+      "id": 0,
+      "type": "Data",
+      "size_bytes": 32768,
+      "line_size": 64,
+      "sets": 64,
+      "ways": 8,
+      "shared_cpu_list": "0,12",
+      "detected": true
+    },
+    {
+      "level": 1,
+      "id": 1,
+      "type": "Data",
+      "size_bytes": 32768,
+      "line_size": 64,
+      "sets": 64,
+      "ways": 8,
+      "shared_cpu_list": "1,13",
+      "detected": true
+    },
+    {
+      "level": 1,
+      "id": 2,
+      "type": "Data",
+      "size_bytes": 32768,
+      "line_size": 64,
+      "sets": 64,
+      "ways": 8,
+      "shared_cpu_list": "2,14",
+      "detected": true
+    },
+    {
+      "level": 1,
+      "id": 3,
+      "type": "Data",
+      "size_bytes": 32768,
+      "line_size": 64,
+      "sets": 64,
+      "ways": 8,
+      "shared_cpu_list": "3,15",
+      "detected": true
+    },
+    {
+      "level": 1,
+      "id": 4,
+      "type": "Data",
+      "size_bytes": 32768,
+      "line_size": 64,
+      "sets": 64,
+      "ways": 8,
+      "shared_cpu_list": "4,16",
+      "detected": true
+    },
+    {
+      "level": 1,
+      "id": 5,
+      "type": "Data",
+      "size_bytes": 32768,
+      "line_size": 64,
+      "sets": 64,
+      "ways": 8,
+      "shared_cpu_list": "5,17",
+      "detected": true
+    },
+    {
+      "level": 1,
+      "id": 8,
+      "type": "Data",
+      "size_bytes": 32768,
+      "line_size": 64,
+      "sets": 64,
+      "ways": 8,
+      "shared_cpu_list": "6,18",
+      "detected": true
+    },
+    {
+      "level": 1,
+      "id": 9,
+      "type": "Data",
+      "size_bytes": 32768,
+      "line_size": 64,
+      "sets": 64,
+      "ways": 8,
+      "shared_cpu_list": "7,19",
+      "detected": true
+    },
+    {
+      "level": 1,
+      "id": 10,
+      "type": "Data",
+      "size_bytes": 32768,
+      "line_size": 64,
+      "sets": 64,
+      "ways": 8,
+      "shared_cpu_list": "8,20",
+      "detected": true
+    },
+    {
+      "level": 1,
+      "id": 11,
+      "type": "Data",
+      "size_bytes": 32768,
+      "line_size": 64,
+      "sets": 64,
+      "ways": 8,
+      "shared_cpu_list": "9,21",
+      "detected": true
+    },
+    {
+      "level": 1,
+      "id": 12,
+      "type": "Data",
+      "size_bytes": 32768,
+      "line_size": 64,
+      "sets": 64,
+      "ways": 8,
+      "shared_cpu_list": "10,22",
+      "detected": true
+    },
+    {
+      "level": 1,
+      "id": 13,
+      "type": "Data",
+      "size_bytes": 32768,
+      "line_size": 64,
+      "sets": 64,
+      "ways": 8,
+      "shared_cpu_list": "11,23",
+      "detected": true
+    },
+    {
+      "level": 2,
+      "id": 0,
+      "type": "Unified",
+      "size_bytes": 1048576,
+      "line_size": 64,
+      "sets": 2048,
+      "ways": 8,
+      "shared_cpu_list": "0,12",
+      "detected": true
+    },
+    {
+      "level": 2,
+      "id": 1,
+      "type": "Unified",
+      "size_bytes": 1048576,
+      "line_size": 64,
+      "sets": 2048,
+      "ways": 8,
+      "shared_cpu_list": "1,13",
+      "detected": true
+    },
+    {
+      "level": 2,
+      "id": 2,
+      "type": "Unified",
+      "size_bytes": 1048576,
+      "line_size": 64,
+      "sets": 2048,
+      "ways": 8,
+      "shared_cpu_list": "2,14",
+      "detected": true
+    },
+    {
+      "level": 2,
+      "id": 3,
+      "type": "Unified",
+      "size_bytes": 1048576,
+      "line_size": 64,
+      "sets": 2048,
+      "ways": 8,
+      "shared_cpu_list": "3,15",
+      "detected": true
+    },
+    {
+      "level": 2,
+      "id": 4,
+      "type": "Unified",
+      "size_bytes": 1048576,
+      "line_size": 64,
+      "sets": 2048,
+      "ways": 8,
+      "shared_cpu_list": "4,16",
+      "detected": true
+    },
+    {
+      "level": 2,
+      "id": 5,
+      "type": "Unified",
+      "size_bytes": 1048576,
+      "line_size": 64,
+      "sets": 2048,
+      "ways": 8,
+      "shared_cpu_list": "5,17",
+      "detected": true
+    },
+    {
+      "level": 2,
+      "id": 8,
+      "type": "Unified",
+      "size_bytes": 1048576,
+      "line_size": 64,
+      "sets": 2048,
+      "ways": 8,
+      "shared_cpu_list": "6,18",
+      "detected": true
+    },
+    {
+      "level": 2,
+      "id": 9,
+      "type": "Unified",
+      "size_bytes": 1048576,
+      "line_size": 64,
+      "sets": 2048,
+      "ways": 8,
+      "shared_cpu_list": "7,19",
+      "detected": true
+    },
+    {
+      "level": 2,
+      "id": 10,
+      "type": "Unified",
+      "size_bytes": 1048576,
+      "line_size": 64,
+      "sets": 2048,
+      "ways": 8,
+      "shared_cpu_list": "8,20",
+      "detected": true
+    },
+    {
+      "level": 2,
+      "id": 11,
+      "type": "Unified",
+      "size_bytes": 1048576,
+      "line_size": 64,
+      "sets": 2048,
+      "ways": 8,
+      "shared_cpu_list": "9,21",
+      "detected": true
+    },
+    {
+      "level": 2,
+      "id": 12,
+      "type": "Unified",
+      "size_bytes": 1048576,
+      "line_size": 64,
+      "sets": 2048,
+      "ways": 8,
+      "shared_cpu_list": "10,22",
+      "detected": true
+    },
+    {
+      "level": 2,
+      "id": 13,
+      "type": "Unified",
+      "size_bytes": 1048576,
+      "line_size": 64,
+      "sets": 2048,
+      "ways": 8,
+      "shared_cpu_list": "11,23",
+      "detected": true
+    },
+    {
+      "level": 3,
+      "id": 0,
+      "type": "Unified",
+      "size_bytes": 33554432,
+      "line_size": 64,
+      "sets": 32768,
+      "ways": 16,
+      "shared_cpu_list": "0-5,12-17",
+      "detected": true
+    },
+    {
+      "level": 3,
+      "id": 1,
+      "type": "Unified",
+      "size_bytes": 33554432,
+      "line_size": 64,
+      "sets": 32768,
+      "ways": 16,
+      "shared_cpu_list": "6-11,18-23",
+      "detected": true
+    }
+  ],
   "sample_stats": {
-    "total_samples": 995511,
-    "samples_with_address": 465888,
-    "samples_with_ip": 995511,
+    "total_samples": 62400,
+    "samples_with_address": 31957,
+    "samples_with_physical_address": 31957,
+    "samples_with_ip": 62400,
     "samples_with_sp": 0,
     "samples_with_bp": 0,
-    "unique_threads": 5,
+    "unique_threads": 1,
     "unique_cpus": 1
   },
   "false_sharing": [
+  ],
+  "cache_thrashing": [
     {
       "index": 1,
-      "base_addr": "0x6266cd543000",
-      "samples": 45365,
-      "reads": 45365,
-      "writes": 0,
-      "threads": 4,
-      "distinct_offsets": 4,
-      "shared_offsets": 0,
-      "private_offset_fraction": 1.0000,
-      "top_offsets": 4,
-      "thread_switches": 34321,
-      "bounce_score": 0.7566,
-      "address_range": {
-        "min": "0x6266cd543030",
-        "max": "0x6266cd54303c",
-        "bytes": 12
-      }
+      "cache_level": 1,
+      "cache_id": 8,
+      "cache_type": "Data",
+      "shared_cpu_list": "6,18",
+      "address_basis": "virtual-page-offset",
+      "cache_set": 0,
+      "start_time_ns": 86964967139926,
+      "end_time_ns": 86965588277437,
+      "duration_ns": 621137511,
+      "samples": 2135,
+      "unique_lines": 9,
+      "evictions": 250,
+      "eviction_reloads": 249,
+      "threads": 1,
+      "cpus": 1,
+      "reload_ratio": 0.9960,
+      "oversubscription": 1.1250,
+      "score": 0.5603
     }
   ]
 }

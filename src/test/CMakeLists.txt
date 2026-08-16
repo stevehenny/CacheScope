@@ -5,3 +5,7 @@ add_executable(fix_false_share fix_false_share.cpp)
 add_executable(stack_fix_false_share stack_fix_false_share.cpp)
 add_executable(globals globals.cpp)
 add_executable(long_running_false_sharing long_running_false_sharing.cpp)
+add_executable(cache_thrash cache_thrash.cpp)
+
+add_executable(thrashing_analysis_test thrashing_analysis_test.cpp)
+target_link_libraries(thrashing_analysis_test PRIVATE runtime)

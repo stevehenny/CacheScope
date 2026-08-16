@@ -126,16 +126,15 @@ struct RuntimeStackObject {
   int64_t pid;
 };
 
-enum class SampleType {
-  CACHE_LOAD,
-  CACHE_STORE,
-};
+enum class SampleType { CACHE_LOAD, CACHE_STORE, PAGE_FAULT };
+
 struct PerfSample {
   uint32_t tid;
   uint32_t pid;
   uint32_t cpu;
   int64_t ip;
   int64_t addr;
+  int64_t phys_addr{};
   int64_t sp{};  // sampled user stack pointer (perf --user-regs=sp)
   int64_t bp{};  // sampled user frame pointer (perf --user-regs=bp)
   int64_t time_stamp{};
@@ -146,9 +145,10 @@ struct PerfSample {
   friend std::ostream& operator<<(std::ostream& os, const PerfSample& s) {
     return os << std::format(
              "TID: {}\nPID: {}\nCPU: {}\nIP: 0x{:x}\nADDR: 0x{:x}\nSP: "
-             "0x{:x}\nBP: 0x{:x}\n"
+             "0x{:x}\nPHYS_ADDR: 0x{:x}\nBP: 0x{:x}\n"
              "TIME: {}\nSYM: {}\nDSO: {}\n",
-             s.tid, s.pid, s.cpu, s.ip, s.addr, s.sp, s.bp, s.time_stamp,
+             s.tid, s.pid, s.cpu, s.ip, s.addr, s.sp, s.phys_addr, s.bp,
+             s.time_stamp,
              s.symbol.empty() ? "<unknown>" : s.symbol,
              s.dso.empty() ? "<unknown>" : s.dso);
   }
