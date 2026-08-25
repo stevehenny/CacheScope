@@ -1,8 +1,8 @@
 #include "analysis/AnalyzeCommand.hpp"
 
 #include <algorithm>
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <exception>
 #include <filesystem>
 #include <format>
@@ -22,8 +22,8 @@
 #include "dwarf/Extractor.hpp"
 #include "report/JsonReport.hpp"
 #include "report/TextReport.hpp"
-#include "runtime/FalseSharingAnalysis.hpp"
 #include "runtime/CacheTopology.hpp"
+#include "runtime/FalseSharingAnalysis.hpp"
 #include "runtime/SampleStats.hpp"
 #include "runtime/Thrashing.hpp"
 
@@ -32,12 +32,11 @@ namespace {
 std::optional<std::string> resolve_binary_from_pid(pid_t pid,
                                                    std::string& error) {
   try {
-    return std::filesystem::read_symlink(
-             std::format("/proc/{}/exe", pid))
+    return std::filesystem::read_symlink(std::format("/proc/{}/exe", pid))
       .string();
   } catch (const std::exception& e) {
-    error = std::format("Failed to resolve executable for pid {}: {}", pid,
-                       e.what());
+    error =
+      std::format("Failed to resolve executable for pid {}: {}", pid, e.what());
     return std::nullopt;
   }
 }
@@ -45,26 +44,22 @@ std::optional<std::string> resolve_binary_from_pid(pid_t pid,
 void render_live_monitor(const std::string& binary, pid_t pid,
                          const std::string& event,
                          const std::vector<PerfSample>& samples,
-                         const std::vector<CacheInfo>& caches,
-                         bool done,
+                         const std::vector<CacheInfo>& caches, bool done,
                          std::chrono::steady_clock::time_point started_at) {
-  const auto now =
-    std::chrono::steady_clock::now();
-  const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
-                         now - started_at)
-                         .count();
-  const auto stats = SampleStats::compute(samples);
+  const auto now = std::chrono::steady_clock::now();
+  const auto elapsed =
+    std::chrono::duration_cast<std::chrono::seconds>(now - started_at).count();
+  const auto stats     = SampleStats::compute(samples);
   const auto hot_lines = FalseSharingAnalysis::find_hot_cache_lines(samples);
-  const auto thrashing =
-    ThrashingAnalysis::detect(samples, caches);
+  const auto thrashing = ThrashingAnalysis::detect(samples, caches);
 
   std::cout << "\033[2J\033[H";
   std::cout << "=== Live Monitor ===\n";
   std::cout << std::format("PID: {}  Binary: {}\n", pid, binary);
   std::cout << std::format("Event: {}  Elapsed: {}s\n", event, elapsed);
-  std::cout << std::format(
-    "Samples: {}  With address: {}  With IP: {}\n", stats.total_samples,
-    stats.samples_with_addr, stats.samples_with_ip);
+  std::cout << std::format("Samples: {}  With address: {}  With IP: {}\n",
+                           stats.total_samples, stats.samples_with_addr,
+                           stats.samples_with_ip);
   std::cout << std::format("Threads: {}  CPUs: {}\n", stats.unique_threads,
                            stats.unique_cpus);
 
@@ -73,7 +68,7 @@ void render_live_monitor(const std::string& binary, pid_t pid,
   } else {
     std::cout << "Top cache lines:\n";
     for (size_t i = 0; i < std::min<size_t>(hot_lines.size(), 3); ++i) {
-      const auto& line = hot_lines[i];
+      const auto& line           = hot_lines[i];
       std::vector<uint32_t> tids = line.tids;
       std::sort(tids.begin(), tids.end());
       tids.erase(std::unique(tids.begin(), tids.end()), tids.end());
@@ -240,33 +235,33 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
 
   // Phase 1: DWARF extraction
   if (monitoring) {
-   std::cout << "=== Phase 1: DWARF Analysis (skipped in monitor mode) ===\n\n";
+    std::cout
+      << "=== Phase 1: DWARF Analysis (skipped in monitor mode) ===\n\n";
   } else {
-   std::cout << "=== Phase 1: DWARF Analysis ===\n";
-   ext = std::make_unique<Extractor>(binary);
-   ext->create_registry();
-   if (ext->get_registry().get_map().empty()) {
-     std::cerr
-       << "No DWARF information found. Ensure the binary is compiled with "
-          "-g and has not been stripped.\n";
-     return;
-   }
+    std::cout << "=== Phase 1: DWARF Analysis ===\n";
+    ext = std::make_unique<Extractor>(binary);
+    ext->create_registry();
+    if (ext->get_registry().get_map().empty()) {
+      std::cerr
+        << "No DWARF information found. Ensure the binary is compiled with "
+           "-g and has not been stripped.\n";
+      return;
+    }
 
-   if (verbose) {
-     for (const auto& [k, v] : ext->get_registry().get_map()) {
-       std::cout << std::format("{}: {} bytes\n", k, v.size);
-     }
-   }
+    if (verbose) {
+      for (const auto& [k, v] : ext->get_registry().get_map()) {
+        std::cout << std::format("{}: {} bytes\n", k, v.size);
+      }
+    }
 
-   stack_objects = ext->get_stack_objects();
-   std::cout << std::format("Found {} stack objects\n\n",
-                            stack_objects.size());
+    stack_objects = ext->get_stack_objects();
+    std::cout << std::format("Found {} stack objects\n\n",
+                             stack_objects.size());
   }
 
   // Phase 2: Run perf record
-  std::cout << std::format(
-    "=== Phase 2: Performance {} ===\n",
-    monitoring ? "Monitoring" : "Recording");
+  std::cout << std::format("=== Phase 2: Performance {} ===\n",
+                           monitoring ? "Monitoring" : "Recording");
   if (monitoring) {
     std::cout << std::format(
       "Monitoring pid {} ({}) with event '{}' (period={}) via "
@@ -274,34 +269,32 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
       *options.pid, binary, default_events, sample_rate);
   } else {
     std::cout << std::format(
-      "Recording {} with event '{}' (period={}) via perf_event_open\n",
-      binary, default_events, sample_rate);
+      "Recording {} with event '{}' (period={}) via perf_event_open\n", binary,
+      default_events, sample_rate);
   }
 
   const auto monitor_started_at = std::chrono::steady_clock::now();
   auto monitor_last_render_at   = monitor_started_at;
-  bool monitor_first_render = true;
+  bool monitor_first_render     = true;
 
-  auto record = monitoring
-                  ? recorder_.record_pid(
-                      *options.pid, binary, default_events, sample_rate, verbose,
-                      [&](const std::vector<PerfSample>& samples,
-                          size_t new_samples, bool done) {
-                        const auto now = std::chrono::steady_clock::now();
-                        if (!monitor_first_render && !done &&
-                            now - monitor_last_render_at <
-                              std::chrono::seconds(1)) {
-                          return;
-                        }
-                        if (monitor_first_render) monitor_first_render = false;
-                        monitor_last_render_at = now;
-                        render_live_monitor(binary, *options.pid, default_events,
-                                            samples, cache_topology, done,
-                                            monitor_started_at);
-                        (void)new_samples;
-                      })
-                  : recorder_.record_binary(binary, default_events,
-                                            sample_rate, verbose);
+  auto record =
+    monitoring
+      ? recorder_.record_pid(
+          *options.pid, binary, default_events, sample_rate, verbose,
+          [&](const std::vector<PerfSample>& samples, size_t new_samples,
+              bool done) {
+            const auto now = std::chrono::steady_clock::now();
+            if (!monitor_first_render && !done &&
+                now - monitor_last_render_at < std::chrono::seconds(1)) {
+              return;
+            }
+            if (monitor_first_render) monitor_first_render = false;
+            monitor_last_render_at = now;
+            render_live_monitor(binary, *options.pid, default_events, samples,
+                                cache_topology, done, monitor_started_at);
+            (void)new_samples;
+          })
+      : recorder_.record_binary(binary, default_events, sample_rate, verbose);
   if (!record.ok()) {
     std::cerr << std::format("Perf recording failed: {}\n", record.error);
     return;
@@ -370,9 +363,9 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
   ThrashingAnalysis::print(thrashing, cache_topology);
 
   if (!report_md_path.empty() || !report_json_path.empty()) {
-    Report report = Report::from_analysis(
-      binary, default_events, sample_rate, stats, hot_lines, thrashing,
-      cache_topology);
+    Report report =
+      Report::from_analysis(binary, default_events, sample_rate, stats,
+                            hot_lines, thrashing, cache_topology);
 
     if (!report_md_path.empty()) {
       std::ofstream out(report_md_path);
@@ -663,7 +656,13 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
     const int64_t base =
       (s.addr / static_cast<int64_t>(FalseSharingAnalysis::CACHE_LINE_SIZE)) *
       static_cast<int64_t>(FalseSharingAnalysis::CACHE_LINE_SIZE);
-    by_cacheline[base].push_back(rv);
+    auto& resolved = by_cacheline[base];
+    const bool already_present =
+      std::ranges::any_of(resolved, [&](const ResolvedVariable& existing) {
+        return existing.kind == rv.kind && existing.name == rv.name &&
+               existing.address == rv.address && existing.size == rv.size;
+      });
+    if (!already_present) resolved.push_back(rv);
   };
 
   // Prebuild stack lookup by function for reuse.
@@ -742,67 +741,157 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
   // Print per-hot-cache-line per-thread hotspots (variable + field path)
   std::cout << "\n=== Phase 7: Field Attribution (Bridge) ===\n\n";
 
-  for (size_t i = 0; i < std::min(hot_lines.size(), size_t{10}); ++i) {
-    const auto& line = hot_lines[i];
-    auto it          = by_cacheline.find(line.base_addr);
-    if (it == by_cacheline.end() || it->second.empty()) continue;
+  std::cout << std::format("Resolved variable cache lines: {}\n\n",
+                           by_cacheline.size());
 
-    // key: tid -> key string -> count
-    std::unordered_map<uint32_t, std::unordered_map<std::string, size_t>>
-      counts;
+  using AttributionCounts =
+    std::unordered_map<uint32_t, std::unordered_map<std::string, size_t>>;
 
-    for (const auto& rv : it->second) {
-      (void)rv;
-    }
+  auto cache_line_base = [](int64_t address) {
+    return
+      (address /
+       static_cast<int64_t>(FalseSharingAnalysis::CACHE_LINE_SIZE)) *
+      static_cast<int64_t>(FalseSharingAnalysis::CACHE_LINE_SIZE);
+  };
 
-    // Second pass: walk samples for this cacheline and match to resolved vars.
-    for (const auto* ps : bin_samples) {
-      const auto& s = *ps;
-      const int64_t base =
-        (s.addr / static_cast<int64_t>(FalseSharingAnalysis::CACHE_LINE_SIZE)) *
-        static_cast<int64_t>(FalseSharingAnalysis::CACHE_LINE_SIZE);
-      if (base != line.base_addr) continue;
+  auto add_attribution = [&](AttributionCounts& counts, const PerfSample& s,
+                             const std::vector<ResolvedVariable>& resolved) {
+    for (const auto& rv : resolved) {
+      const int64_t start = rv.address;
+      const int64_t end   = rv.address + static_cast<int64_t>(rv.size);
+      if (s.addr < start || s.addr >= end) continue;
 
-      // Find the first resolved var that contains this address.
-      std::string best = "<unattributed>";
-      for (const auto& rv : it->second) {
-        const int64_t start = rv.address;
-        const int64_t end   = rv.address + static_cast<int64_t>(rv.size);
-        if (s.addr < start || s.addr >= end) continue;
-
-        TypeInfo* t = nullptr;
-        if (rv.kind == ResolvedVariable::Kind::Global) {
-          if (auto itg = global_type.find(rv.name); itg != global_type.end())
-            t = itg->second;
-        } else if (rv.kind == ResolvedVariable::Kind::Stack) {
-          if (auto its = stack_type.find(rv.name); its != stack_type.end())
-            t = its->second;
+      TypeInfo* type = nullptr;
+      if (rv.kind == ResolvedVariable::Kind::Global) {
+        if (auto it = global_type.find(rv.name); it != global_type.end()) {
+          type = it->second;
         }
-
-        auto path = field_path_for_offset(t, s.addr - rv.address);
-        best =
-          std::format("{} +0x{:x} ({})", rv.name, s.addr - rv.address, path);
-        break;
+      } else if (rv.kind == ResolvedVariable::Kind::Stack) {
+        if (auto it = stack_type.find(rv.name); it != stack_type.end()) {
+          type = it->second;
+        }
       }
 
-      counts[s.tid][best]++;
+      const auto offset = s.addr - rv.address;
+      const auto path   = field_path_for_offset(type, offset);
+      const auto label =
+        std::format("{} +0x{:x} ({})", rv.name, offset, path);
+      ++counts[s.tid][label];
+      return;
     }
+  };
 
-    std::cout << std::format("Hot line #{} 0x{:x}:\n", i + 1, line.base_addr);
-    for (auto& [tid, m] : counts) {
-      std::vector<std::pair<std::string, size_t>> ranked(m.begin(), m.end());
+  auto print_attributions = [](AttributionCounts& counts,
+                               std::string_view cause) {
+    std::vector<uint32_t> tids;
+    tids.reserve(counts.size());
+    for (const auto& [tid, _] : counts) tids.push_back(tid);
+    std::ranges::sort(tids);
+
+    for (uint32_t tid : tids) {
+      auto& per_variable = counts.at(tid);
+      std::vector<std::pair<std::string, size_t>> ranked(per_variable.begin(),
+                                                         per_variable.end());
       std::ranges::sort(ranked, [](const auto& a, const auto& b) {
         if (a.second != b.second) return a.second > b.second;
         return a.first < b.first;
       });
 
       std::cout << std::format("  TID {}:\n", tid);
-      for (size_t k = 0; k < std::min<size_t>(ranked.size(), 5); ++k) {
-        std::cout << std::format("    {}  ({} samples)\n", ranked[k].first,
-                                 ranked[k].second);
+      for (size_t i = 0; i < std::min<size_t>(ranked.size(), 5); ++i) {
+        std::cout << std::format(
+          "    {}  ({} samples; cause: {})\n", ranked[i].first,
+          ranked[i].second, cause);
       }
     }
+  };
+
+  size_t attributed_false_sharing_lines = 0;
+  for (size_t i = 0; i < std::min(hot_lines.size(), size_t{10}); ++i) {
+    const auto& line = hot_lines[i];
+    auto it          = by_cacheline.find(line.base_addr);
+    if (it == by_cacheline.end() || it->second.empty()) continue;
+
+    AttributionCounts counts;
+    for (const auto* ps : bin_samples) {
+      const auto& s = *ps;
+      if (cache_line_base(s.addr) != line.base_addr) continue;
+      add_attribution(counts, s, it->second);
+    }
+    if (counts.empty()) continue;
+
+    ++attributed_false_sharing_lines;
+    std::cout << std::format(
+      "False sharing - hot line #{} 0x{:x}:\n", i + 1, line.base_addr);
+    print_attributions(counts, "false sharing");
     std::cout << "\n";
+  }
+
+  if (attributed_false_sharing_lines == 0) {
+    std::cout << (hot_lines.empty()
+                    ? "No false sharing detected; no variables to attribute.\n\n"
+                    : "No resolved variables for detected false sharing.\n\n");
+  }
+
+  size_t attributed_thrashing_events = 0;
+  for (size_t i = 0; i < std::min(thrashing.size(), size_t{10}); ++i) {
+    const auto& event = thrashing[i];
+    const auto cache_it = std::ranges::find_if(
+      cache_topology, [&](const CacheInfo& cache) {
+        return cache.level == event.cache_level && cache.id == event.cache_id &&
+               cache.type == event.cache_type &&
+               cache.shared_cpu_list == event.shared_cpu_list;
+      });
+    if (cache_it == cache_topology.end()) continue;
+
+    const auto& cache = *cache_it;
+    AttributionCounts counts;
+    for (const auto* ps : bin_samples) {
+      const auto& s = *ps;
+      if (s.event_type == SampleType::PAGE_FAULT ||
+          !cache.contains_cpu(s.cpu)) {
+        continue;
+      }
+
+      const bool event_has_time =
+        event.start_time_ns != 0 || event.end_time_ns != 0;
+      if (event_has_time &&
+          (s.time_stamp < event.start_time_ns ||
+           s.time_stamp > event.end_time_ns)) {
+        continue;
+      }
+
+      int64_t set_address = s.addr;
+      if (event.address_basis == AddressBasis::Physical) {
+        if (s.phys_addr <= 0) continue;
+        set_address = s.phys_addr;
+      }
+      if (set_address <= 0 || cache.line_size == 0 || cache.sets == 0) {
+        continue;
+      }
+
+      const auto line = static_cast<uint64_t>(set_address) / cache.line_size;
+      if (line % cache.sets != event.cache_set) continue;
+
+      auto resolved_it = by_cacheline.find(cache_line_base(s.addr));
+      if (resolved_it == by_cacheline.end()) continue;
+      add_attribution(counts, s, resolved_it->second);
+    }
+    if (counts.empty()) continue;
+
+    ++attributed_thrashing_events;
+    std::cout << std::format(
+      "Cache thrashing - event #{} L{} {} id={} / set {} / CPUs {}:\n",
+      i + 1, event.cache_level, event.cache_type, event.cache_id,
+      event.cache_set, event.shared_cpu_list);
+    print_attributions(counts, "cache thrashing");
+    std::cout << "\n";
+  }
+
+  if (attributed_thrashing_events == 0) {
+    std::cout << (thrashing.empty()
+                    ? "No cache thrashing detected; no variables to attribute.\n\n"
+                    : "No resolved variables for detected cache thrashing.\n\n");
   }
 
   if (have_frames && frame_ctx) {
