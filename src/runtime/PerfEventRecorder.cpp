@@ -3,14 +3,15 @@
 #include <linux/perf_event.h>
 #include <perfmon/pfmlib.h>
 #include <perfmon/pfmlib_perf_event.h>
-#include <chrono>
-#include <functional>
 #include <signal.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+#include <chrono>
+#include <functional>
 
 #include "common/Utils.hpp"
 
@@ -21,16 +22,16 @@
 #include <sys/wait.h>
 
 #include <algorithm>
-#include <charconv>
 #include <cctype>
 #include <cerrno>
+#include <charconv>
 #include <cstring>
 #include <filesystem>
 #include <format>
 #include <iostream>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
-#include <thread>
 
 namespace {
 
@@ -51,10 +52,10 @@ std::vector<pid_t> list_threads(pid_t pid) {
 
   for (; it != std::filesystem::directory_iterator(); it.increment(ec)) {
     if (ec) break;
-    const auto name = it->path().filename().string();
-    pid_t tid       = 0;
-    const auto* begin = name.data();
-    const auto* end   = name.data() + name.size();
+    const auto name     = it->path().filename().string();
+    pid_t tid           = 0;
+    const auto* begin   = name.data();
+    const auto* end     = name.data() + name.size();
     auto [ptr, conv_ec] = std::from_chars(begin, end, tid);
     if (conv_ec != std::errc() || ptr != end) continue;
     tids.push_back(tid);
@@ -66,11 +67,13 @@ std::vector<pid_t> list_threads(pid_t pid) {
 }
 
 bool open_events(pid_t pid, const std::vector<std::string>& events,
-                 int sample_period, std::vector<Utils::PerfEventHandle>& handles,
+                 int sample_period,
+                 std::vector<Utils::PerfEventHandle>& handles,
                  std::string& error) {
   const int cpu_count =
     std::max(1, static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN)));
-  handles.reserve(handles.size() + events.size() * static_cast<size_t>(cpu_count));
+  handles.reserve(handles.size() +
+                  events.size() * static_cast<size_t>(cpu_count));
 
   auto open_event = [&](const std::string& ev, int cpu) {
     Utils::PerfEventHandle h;
@@ -105,7 +108,8 @@ bool open_thread_events(pid_t tid, const std::vector<std::string>& events,
                         std::string& error) {
   const int cpu_count =
     std::max(1, static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN)));
-  handles.reserve(handles.size() + events.size() * static_cast<size_t>(cpu_count));
+  handles.reserve(handles.size() +
+                  events.size() * static_cast<size_t>(cpu_count));
 
   auto open_event = [&](const std::string& ev, int cpu) {
     Utils::PerfEventHandle h;
@@ -226,7 +230,8 @@ PerfRecordResult PerfEventRecorder::record_binary(const std::string& binary,
   auto cleanup_child = [&]() {
     int cleanup_status = 0;
     (void)kill(pid, SIGKILL);
-    while (waitpid(pid, &cleanup_status, 0) == -1 && errno == EINTR) {}
+    while (waitpid(pid, &cleanup_status, 0) == -1 && errno == EINTR) {
+    }
   };
 
   if (pid == 0) {
@@ -308,12 +313,9 @@ PerfRecordResult PerfEventRecorder::record_binary(const std::string& binary,
   return result;
 }
 
-PerfRecordResult PerfEventRecorder::record_pid(pid_t pid,
-                                               const std::string& binary,
-                                               const std::string& event_spec,
-                                               int sample_period,
-                                               bool verbose,
-                                               MonitorUpdateCallback on_update) {
+PerfRecordResult PerfEventRecorder::record_pid(
+  pid_t pid, const std::string& binary, const std::string& event_spec,
+  int sample_period, bool verbose, MonitorUpdateCallback on_update) {
   PerfRecordResult result;
   if (!Utils::ensure_pfm_init(result.error)) return result;
 

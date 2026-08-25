@@ -277,6 +277,8 @@ bool parse_sample_stats(JsonReader& reader, ReportData::SampleStats& stats,
         return reader.parse_size_t(stats.total_samples, err);
       if (key == "samples_with_address")
         return reader.parse_size_t(stats.samples_with_address, err);
+      if (key == "samples_with_physical_address")
+        return reader.parse_size_t(stats.samples_with_physical_address, err);
       if (key == "samples_with_ip")
         return reader.parse_size_t(stats.samples_with_ip, err);
       if (key == "samples_with_sp")
@@ -288,6 +290,62 @@ bool parse_sample_stats(JsonReader& reader, ReportData::SampleStats& stats,
       if (key == "unique_cpus")
         return reader.parse_size_t(stats.unique_cpus, err);
       return reader.skip_value(err);
+    },
+    error);
+}
+
+bool parse_cache_info(JsonReader& reader, ReportData::CacheInfo& cache,
+                      std::string& error) {
+  return reader.parse_object(
+    [&](const std::string& key, std::string& err) {
+      if (key == "level") {
+        int64_t value = 0;
+        if (!reader.parse_int64(value, err)) return false;
+        cache.level = static_cast<int>(value);
+        return true;
+      }
+      if (key == "id") {
+        int64_t value = 0;
+        if (!reader.parse_int64(value, err)) return false;
+        cache.id = static_cast<int>(value);
+        return true;
+      }
+      if (key == "type") return reader.parse_string(cache.type, err);
+      if (key == "size_bytes")
+        return reader.parse_size_t(cache.size_bytes, err);
+      if (key == "line_size")
+        return reader.parse_size_t(cache.line_size, err);
+      if (key == "sets") return reader.parse_size_t(cache.sets, err);
+      if (key == "ways") return reader.parse_size_t(cache.ways, err);
+      if (key == "shared_cpu_list")
+        return reader.parse_string(cache.shared_cpu_list, err);
+      if (key == "detected") {
+        if (reader.consume_literal("true")) {
+          cache.detected = true;
+          return true;
+        }
+        if (reader.consume_literal("false")) {
+          cache.detected = false;
+          return true;
+        }
+        err = "Expected boolean.";
+        return false;
+      }
+      return reader.skip_value(err);
+    },
+    error);
+}
+
+bool parse_cache_topology(JsonReader& reader,
+                          std::vector<ReportData::CacheInfo>& caches,
+                          std::string& error) {
+  caches.clear();
+  return reader.parse_array(
+    [&](size_t, std::string& err) {
+      ReportData::CacheInfo cache;
+      if (!parse_cache_info(reader, cache, err)) return false;
+      caches.push_back(std::move(cache));
+      return true;
     },
     error);
 }
@@ -348,6 +406,70 @@ bool parse_false_sharing(JsonReader& reader,
     error);
 }
 
+bool parse_thrashing_entry(JsonReader& reader,
+                           ReportData::ThrashingEntry& entry,
+                           std::string& error) {
+  return reader.parse_object(
+    [&](const std::string& key, std::string& err) {
+      if (key == "index") return reader.parse_size_t(entry.index, err);
+      if (key == "cache_level") {
+        int64_t value = 0;
+        if (!reader.parse_int64(value, err)) return false;
+        entry.cache_level = static_cast<int>(value);
+        return true;
+      }
+      if (key == "cache_id") {
+        int64_t value = 0;
+        if (!reader.parse_int64(value, err)) return false;
+        entry.cache_id = static_cast<int>(value);
+        return true;
+      }
+      if (key == "cache_type")
+        return reader.parse_string(entry.cache_type, err);
+      if (key == "shared_cpu_list")
+        return reader.parse_string(entry.shared_cpu_list, err);
+      if (key == "address_basis")
+        return reader.parse_string(entry.address_basis, err);
+      if (key == "cache_set") return reader.parse_size_t(entry.cache_set, err);
+      if (key == "start_time_ns")
+        return reader.parse_int64(entry.start_time_ns, err);
+      if (key == "end_time_ns")
+        return reader.parse_int64(entry.end_time_ns, err);
+      if (key == "duration_ns")
+        return reader.parse_int64(entry.duration_ns, err);
+      if (key == "samples") return reader.parse_size_t(entry.samples, err);
+      if (key == "unique_lines")
+        return reader.parse_size_t(entry.unique_lines, err);
+      if (key == "evictions")
+        return reader.parse_size_t(entry.evictions, err);
+      if (key == "eviction_reloads")
+        return reader.parse_size_t(entry.eviction_reloads, err);
+      if (key == "threads") return reader.parse_size_t(entry.threads, err);
+      if (key == "cpus") return reader.parse_size_t(entry.cpus, err);
+      if (key == "reload_ratio")
+        return reader.parse_double(entry.reload_ratio, err);
+      if (key == "oversubscription")
+        return reader.parse_double(entry.oversubscription, err);
+      if (key == "score") return reader.parse_double(entry.score, err);
+      return reader.skip_value(err);
+    },
+    error);
+}
+
+bool parse_cache_thrashing(JsonReader& reader,
+                           std::vector<ReportData::ThrashingEntry>& entries,
+                           std::string& error) {
+  entries.clear();
+  return reader.parse_array(
+    [&](size_t, std::string& err) {
+      ReportData::ThrashingEntry entry;
+      if (!parse_thrashing_entry(reader, entry, err)) return false;
+      entries.push_back(entry);
+      return true;
+    },
+    error);
+}
+
 bool parse_report(std::string_view content, ReportData& report,
                   std::string& error) {
   JsonReader reader{content};
@@ -356,8 +478,12 @@ bool parse_report(std::string_view content, ReportData& report,
           if (key == "metadata") return parse_metadata(reader, report.metadata, err);
           if (key == "sample_stats")
             return parse_sample_stats(reader, report.stats, err);
+          if (key == "cache_topology")
+            return parse_cache_topology(reader, report.cache_topology, err);
           if (key == "false_sharing")
             return parse_false_sharing(reader, report.false_sharing, err);
+          if (key == "cache_thrashing")
+            return parse_cache_thrashing(reader, report.cache_thrashing, err);
           return reader.skip_value(err);
         },
         error)) {
@@ -429,6 +555,11 @@ void render_stats_table(const ReportData& report) {
   ImGui::TextUnformatted("Samples with address");
   ImGui::TableNextColumn();
   ImGui::Text("%zu", report.stats.samples_with_address);
+  ImGui::TableNextRow();
+  ImGui::TableNextColumn();
+  ImGui::TextUnformatted("Samples with physical address");
+  ImGui::TableNextColumn();
+  ImGui::Text("%zu", report.stats.samples_with_physical_address);
   ImGui::TableNextRow();
   ImGui::TableNextColumn();
   ImGui::TextUnformatted("Samples with IP");
@@ -574,6 +705,100 @@ void render_false_sharing(const ReportData& report) {
   render_false_sharing_range(report);
 }
 
+void render_cache_thrashing(const ReportData& report) {
+  ImGui::TextUnformatted("Detected Cache Topology");
+  if (ImGui::BeginTable("cache_topology_table", 9, kTableFlags)) {
+    ImGui::TableSetupColumn("Level");
+    ImGui::TableSetupColumn("Type");
+    ImGui::TableSetupColumn("ID");
+    ImGui::TableSetupColumn("Size KiB");
+    ImGui::TableSetupColumn("Line");
+    ImGui::TableSetupColumn("Sets");
+    ImGui::TableSetupColumn("Ways");
+    ImGui::TableSetupColumn("Shared CPUs");
+    ImGui::TableSetupColumn("Source");
+    ImGui::TableHeadersRow();
+    for (const auto& cache : report.cache_topology) {
+      ImGui::TableNextRow();
+      ImGui::TableNextColumn();
+      ImGui::Text("L%d", cache.level);
+      ImGui::TableNextColumn();
+      ImGui::TextUnformatted(cache.type.c_str());
+      ImGui::TableNextColumn();
+      ImGui::Text("%d", cache.id);
+      ImGui::TableNextColumn();
+      ImGui::Text("%zu", cache.size_bytes / 1024);
+      ImGui::TableNextColumn();
+      ImGui::Text("%zu", cache.line_size);
+      ImGui::TableNextColumn();
+      ImGui::Text("%zu", cache.sets);
+      ImGui::TableNextColumn();
+      ImGui::Text("%zu", cache.ways);
+      ImGui::TableNextColumn();
+      ImGui::TextUnformatted(cache.shared_cpu_list.c_str());
+      ImGui::TableNextColumn();
+      ImGui::TextUnformatted(cache.detected ? "sysfs" : "fallback");
+    }
+    ImGui::EndTable();
+  }
+
+  if (report.cache_thrashing.empty()) {
+    ImGui::TextUnformatted("No cache-thrashing episodes detected.");
+    return;
+  }
+
+  ImGui::Spacing();
+  ImGui::TextUnformatted("Detected Episodes");
+  if (!ImGui::BeginTable("cache_thrashing_table", 14, kTableFlags)) return;
+  ImGui::TableSetupColumn("#");
+  ImGui::TableSetupColumn("Level");
+  ImGui::TableSetupColumn("Type");
+  ImGui::TableSetupColumn("ID");
+  ImGui::TableSetupColumn("Shared CPUs");
+  ImGui::TableSetupColumn("Set");
+  ImGui::TableSetupColumn("Address Basis");
+  ImGui::TableSetupColumn("Samples");
+  ImGui::TableSetupColumn("Lines");
+  ImGui::TableSetupColumn("Evictions");
+  ImGui::TableSetupColumn("Reloads");
+  ImGui::TableSetupColumn("CPUs");
+  ImGui::TableSetupColumn("Reload Ratio");
+  ImGui::TableSetupColumn("Score");
+  ImGui::TableHeadersRow();
+  for (const auto& entry : report.cache_thrashing) {
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::Text("%zu", entry.index);
+    ImGui::TableNextColumn();
+    ImGui::Text("L%d", entry.cache_level);
+    ImGui::TableNextColumn();
+    ImGui::TextUnformatted(entry.cache_type.c_str());
+    ImGui::TableNextColumn();
+    ImGui::Text("%d", entry.cache_id);
+    ImGui::TableNextColumn();
+    ImGui::TextUnformatted(entry.shared_cpu_list.c_str());
+    ImGui::TableNextColumn();
+    ImGui::Text("%zu", entry.cache_set);
+    ImGui::TableNextColumn();
+    ImGui::TextUnformatted(entry.address_basis.c_str());
+    ImGui::TableNextColumn();
+    ImGui::Text("%zu", entry.samples);
+    ImGui::TableNextColumn();
+    ImGui::Text("%zu", entry.unique_lines);
+    ImGui::TableNextColumn();
+    ImGui::Text("%zu", entry.evictions);
+    ImGui::TableNextColumn();
+    ImGui::Text("%zu", entry.eviction_reloads);
+    ImGui::TableNextColumn();
+    ImGui::Text("%zu", entry.cpus);
+    ImGui::TableNextColumn();
+    ImGui::Text("%.3f", entry.reload_ratio);
+    ImGui::TableNextColumn();
+    ImGui::Text("%.3f", entry.score);
+  }
+  ImGui::EndTable();
+}
+
 }  // namespace
 
 ReportGUI::ReportGUI() = default;
@@ -709,4 +934,9 @@ void ReportGUI::render_report(const ReportData& report) {
   ImGui::TextUnformatted("False Sharing Analysis");
   ImGui::Separator();
   render_false_sharing(report);
+
+  ImGui::Spacing();
+  ImGui::TextUnformatted("Cache Thrashing Analysis");
+  ImGui::Separator();
+  render_cache_thrashing(report);
 }

@@ -78,13 +78,11 @@ CacheScope fills this gap by giving developers actionable insights into cache us
 
 ---
 
-## Planned Features
-
-* **Clang-based struct-layout extraction:** Automatically analyze C++ struct and class memory layouts.
-* **Improved per-thread memory tracing:** Record detailed read and write access patterns.
-* **Cache-line simulation:** Model cache-line ownership changes and highlight false sharing.
-* **Additional visualization formats:** Produce heatmaps, timelines, and other interactive views.
-* **Expanded multithreaded analysis:** Improve detection of complex cross-thread access patterns.
+- **Report output**: Export false sharing results to Markdown or JSON with
+  `--report-md` and `--report-json`.
+- **Cache-thrashing detection**: Find recurring, over-capacity reuse within
+  cache sets and report the responsible CPU, set, time range, eviction reload
+  ratio, and confidence score.
 
 ---
 
@@ -113,6 +111,39 @@ To disable the graphical interface and build only the command-line tool:
 cmake .. -DCACHESCOPE_BUILD_GUI=OFF
 cmake --build .
 ```
+
+## Cache-thrashing detection
+
+CacheScope discovers every data and unified cache instance from Linux sysfs,
+including its level, size, line size, set count, associativity, and shared CPU
+domain. No cache-geometry arguments are required:
+
+```bash
+./cache_scope analyze ./my_binary
+```
+
+The sampled trace is replayed independently through each L1 data, L2, and
+last-level cache instance. Private-cache activity is grouped by the CPUs sharing
+that cache, while LLC activity is grouped across the complete shared CPU
+domain. An episode is reported when more lines compete for a set than its
+associativity allows and evicted lines are repeatedly accessed again. Requiring
+post-eviction reloads avoids treating a one-pass memory stream as thrashing.
+
+CacheScope requests physical addresses from `perf_event_open` for accurate
+higher-level indexing. Reports identify the address basis used:
+
+- `physical`: physical addresses were available.
+- `virtual-page-offset`: virtual indexing is exact because all set-index bits
+  are inside the page offset, which is typical for L1.
+- `virtual-estimate`: the kernel did not expose physical addresses and the
+  higher-level set mapping is therefore an estimate.
+
+Some last-level caches apply undocumented slice/index hashing. Even with
+physical addresses, LLC set results should be treated as strong heuristic
+evidence unless the processor's hash is known.
+
+A synthetic same-set workload is built as `build/src/test/cache_thrash` for
+manual end-to-end profiling.
 
 ---
 

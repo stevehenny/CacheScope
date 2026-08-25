@@ -40,6 +40,8 @@ std::vector<CacheLine> FalseSharingAnalysis::find_hot_cache_lines(
       case SampleType::CACHE_STORE:
         ++line.sample_writes;
         break;
+      case SampleType::PAGE_FAULT:
+        break;
     }
   }
 

@@ -10,6 +10,7 @@ class SampleStats {
 public:
   size_t total_samples     = 0;
   size_t samples_with_addr = 0;
+  size_t samples_with_phys_addr = 0;
   size_t samples_with_ip   = 0;
   size_t samples_with_sp   = 0;
   size_t samples_with_bp   = 0;

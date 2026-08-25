@@ -163,6 +163,7 @@ SampleType event_type_from_name(const std::string& name) {
     lower.begin(), lower.end(), lower.begin(),
     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
   if (lower.find("store") != std::string::npos) return SampleType::CACHE_STORE;
+  if (lower.find("fault") != std::string::npos) return SampleType::PAGE_FAULT;
   return SampleType::CACHE_LOAD;
 }
 
@@ -183,11 +184,12 @@ bool setup_event(pid_t pid, const std::string& name, int sample_period, int cpu,
   out.attr.size     = sizeof(out.attr);
   if (ibs_op) {
     out.attr.sample_type = PERF_SAMPLE_IP | PERF_SAMPLE_TID | PERF_SAMPLE_TIME |
-                           PERF_SAMPLE_ADDR | PERF_SAMPLE_DATA_SRC;
+                           PERF_SAMPLE_ADDR | PERF_SAMPLE_CPU |
+                           PERF_SAMPLE_DATA_SRC | PERF_SAMPLE_PHYS_ADDR;
   } else {
     out.attr.sample_type = PERF_SAMPLE_IP | PERF_SAMPLE_TID | PERF_SAMPLE_TIME |
                            PERF_SAMPLE_ADDR | PERF_SAMPLE_CPU |
-                           PERF_SAMPLE_REGS_USER;
+                           PERF_SAMPLE_REGS_USER | PERF_SAMPLE_PHYS_ADDR;
   }
   out.attr.sample_period  = static_cast<uint64_t>(sample_period);
   out.attr.disabled       = 1;
@@ -206,11 +208,24 @@ bool setup_event(pid_t pid, const std::string& name, int sample_period, int cpu,
 #endif
 
   out.type = event_type_from_name(name);
-  int fd   = perf_event_open_sys(&out.attr, pid, cpu, -1, 0);
-  if (fd == -1 && out.attr.precise_ip != 0 &&
-      (errno == EINVAL || errno == EOPNOTSUPP || errno == ENOENT)) {
-    out.attr.precise_ip = 0;
-    fd                  = perf_event_open_sys(&out.attr, pid, cpu, -1, 0);
+  const uint32_t requested_precise_ip = out.attr.precise_ip;
+  auto try_open = [&]() {
+    int opened = perf_event_open_sys(&out.attr, pid, cpu, -1, 0);
+    if (opened == -1 && out.attr.precise_ip != 0 &&
+        (errno == EINVAL || errno == EOPNOTSUPP || errno == ENOENT)) {
+      out.attr.precise_ip = 0;
+      opened = perf_event_open_sys(&out.attr, pid, cpu, -1, 0);
+    }
+    return opened;
+  };
+
+  int fd = try_open();
+  if (fd == -1 && (out.attr.sample_type & PERF_SAMPLE_PHYS_ADDR) != 0 &&
+      (errno == EINVAL || errno == EOPNOTSUPP || errno == ENOENT ||
+       errno == EACCES || errno == EPERM)) {
+    out.attr.sample_type &= ~PERF_SAMPLE_PHYS_ADDR;
+    out.attr.precise_ip = requested_precise_ip;
+    fd                  = try_open();
   }
   if (fd == -1) {
     error = std::format("perf_event_open failed for '{}': {}", name,
@@ -318,6 +333,10 @@ void parse_sample(const perf_event_attr& attr, SampleType type,
       }
     }
   }
+
+  if (attr.sample_type & PERF_SAMPLE_DATA_SRC) (void)read_u64();
+  if (attr.sample_type & PERF_SAMPLE_PHYS_ADDR)
+    s.phys_addr = static_cast<int64_t>(read_u64());
 
   out.push_back(std::move(s));
 }

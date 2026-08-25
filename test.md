@@ -6,10 +6,10 @@
 - Sample period: 10000
 
 ## Sample Statistics
-- Total samples: 62400
-- Samples with address: 31957
-- Samples with physical address: 31957
-- Samples with IP: 62400
+- Total samples: 63400
+- Samples with address: 32481
+- Samples with physical address: 32481
+- Samples with IP: 63400
 - Samples with SP: 0
 - Samples with BP: 0
 - Unique threads: 1
@@ -53,4 +53,4 @@ No hot cache lines detected.
 ### Detected Episodes
 | # | Level | Type | ID | Shared CPUs | Set | Address Basis       | Samples | Lines | Evictions | Reloads | Reload Ratio | Pressure | Score | Duration (ns) |
 |---|-------|------|----|-------------|-----|---------------------|---------|-------|-----------|---------|--------------|----------|-------|---------------|
-| 1 | L1    | Data | 8  | 6,18        | 0   | virtual-page-offset | 2135    | 9     | 250       | 249     | 0.996        | 1.12x    | 0.560 | 621137511     |
+| 1 | L1    | Data | 10 | 8,20        | 0   | virtual-page-offset | 2145    | 9     | 222       | 221     | 0.995        | 1.12x    | 0.560 | 630052149     |
