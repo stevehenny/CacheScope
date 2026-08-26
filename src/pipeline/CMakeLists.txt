@@ -1,14 +1,13 @@
-add_library(analysis
-  AnalyzeCommand.cpp
+add_library(pipeline
+  AnalysisPipeline.cpp
 )
 
-target_link_libraries(analysis
+target_link_libraries(pipeline
   PUBLIC
     cache_scope_includes
     cachescope_project_options
     cachescope_warnings
-    cachescope_dwarf
     report
     runtime
-    ${LIBDW_LIBRARIES}
+    trace
 )

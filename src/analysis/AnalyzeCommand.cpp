@@ -5,7 +5,7 @@
 #include <chrono>
 #include <exception>
 #include <filesystem>
-#include <format>
+#include "common/Format.hpp"
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -32,11 +32,11 @@ namespace {
 std::optional<std::string> resolve_binary_from_pid(pid_t pid,
                                                    std::string& error) {
   try {
-    return std::filesystem::read_symlink(std::format("/proc/{}/exe", pid))
+    return std::filesystem::read_symlink(cachescope::format("/proc/{}/exe", pid))
       .string();
   } catch (const std::exception& e) {
     error =
-      std::format("Failed to resolve executable for pid {}: {}", pid, e.what());
+      cachescope::format("Failed to resolve executable for pid {}: {}", pid, e.what());
     return std::nullopt;
   }
 }
@@ -55,12 +55,12 @@ void render_live_monitor(const std::string& binary, pid_t pid,
 
   std::cout << "\033[2J\033[H";
   std::cout << "=== Live Monitor ===\n";
-  std::cout << std::format("PID: {}  Binary: {}\n", pid, binary);
-  std::cout << std::format("Event: {}  Elapsed: {}s\n", event, elapsed);
-  std::cout << std::format("Samples: {}  With address: {}  With IP: {}\n",
+  std::cout << cachescope::format("PID: {}  Binary: {}\n", pid, binary);
+  std::cout << cachescope::format("Event: {}  Elapsed: {}s\n", event, elapsed);
+  std::cout << cachescope::format("Samples: {}  With address: {}  With IP: {}\n",
                            stats.total_samples, stats.samples_with_addr,
                            stats.samples_with_ip);
-  std::cout << std::format("Threads: {}  CPUs: {}\n", stats.unique_threads,
+  std::cout << cachescope::format("Threads: {}  CPUs: {}\n", stats.unique_threads,
                            stats.unique_cpus);
 
   if (hot_lines.empty()) {
@@ -81,7 +81,7 @@ void render_live_monitor(const std::string& binary, pid_t pid,
 
       const double confidence =
         line.bounce_score * line.private_offset_fraction;
-      std::cout << std::format(
+      std::cout << cachescope::format(
         "  #{} 0x{:x}  confidence={:.3f}  samples={}  reads={}  writes={}  "
         "threads={}  offsets={}  shared={}  private={:.2f}  bounce={:.3f}\n",
         i + 1, line.base_addr, confidence, line.sample_count, line.sample_reads,
@@ -95,14 +95,14 @@ void render_live_monitor(const std::string& binary, pid_t pid,
     std::cout << "Cache-thrashing confidence: none yet\n";
   } else {
     const auto& top = thrashing.front();
-    std::cout << std::format(
+    std::cout << cachescope::format(
       "Top thrashing episode: L{} {} / set {} / CPUs {}  score={:.3f}  "
       "reloads={}/{}  lines={}\n",
       top.cache_level, top.cache_type, top.cache_set, top.shared_cpu_list,
       top.score, top.eviction_reloads, top.evictions, top.unique_lines);
   }
 
-  std::cout << std::format("State: {}\n", done ? "complete" : "running");
+  std::cout << cachescope::format("State: {}\n", done ? "complete" : "running");
   std::cout << std::flush;
 }
 
@@ -152,7 +152,7 @@ std::string field_path_for_offset(TypeInfo* type, int64_t off, int depth = 0) {
       (elem && elem->size) ? static_cast<int64_t>(elem->size) : 1;
     const int64_t idx = esz ? (off / esz) : 0;
     const int64_t sub = esz ? (off - idx * esz) : off;
-    std::string head  = std::format("[{}]", idx);
+    std::string head  = cachescope::format("[{}]", idx);
     if (elem &&
         (elem->kind == TypeKind::Struct || elem->kind == TypeKind::Class ||
          elem->kind == TypeKind::Array)) {
@@ -250,25 +250,25 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
 
     if (verbose) {
       for (const auto& [k, v] : ext->get_registry().get_map()) {
-        std::cout << std::format("{}: {} bytes\n", k, v.size);
+        std::cout << cachescope::format("{}: {} bytes\n", k, v.size);
       }
     }
 
     stack_objects = ext->get_stack_objects();
-    std::cout << std::format("Found {} stack objects\n\n",
+    std::cout << cachescope::format("Found {} stack objects\n\n",
                              stack_objects.size());
   }
 
   // Phase 2: Run perf record
-  std::cout << std::format("=== Phase 2: Performance {} ===\n",
+  std::cout << cachescope::format("=== Phase 2: Performance {} ===\n",
                            monitoring ? "Monitoring" : "Recording");
   if (monitoring) {
-    std::cout << std::format(
+    std::cout << cachescope::format(
       "Monitoring pid {} ({}) with event '{}' (period={}) via "
       "perf_event_open\n",
       *options.pid, binary, default_events, sample_rate);
   } else {
-    std::cout << std::format(
+    std::cout << cachescope::format(
       "Recording {} with event '{}' (period={}) via perf_event_open\n", binary,
       default_events, sample_rate);
   }
@@ -296,7 +296,7 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
           })
       : recorder_.record_binary(binary, default_events, sample_rate, verbose);
   if (!record.ok()) {
-    std::cerr << std::format("Perf recording failed: {}\n", record.error);
+    std::cerr << cachescope::format("Perf recording failed: {}\n", record.error);
     return;
   }
 
@@ -330,7 +330,7 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
     return true;
   });
   if (verbose) {
-    std::cout << std::format("Filtered samples by DSO: {} -> {}\n", before,
+    std::cout << cachescope::format("Filtered samples by DSO: {} -> {}\n", before,
                              samples.size());
   }
 
@@ -352,7 +352,7 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
   if (verbose || samples.size() <= 20) {
     std::cout << "\n=== Sample Preview ===\n";
     for (size_t i = 0; i < std::min(samples.size(), size_t{10}); ++i) {
-      std::cout << std::format("Sample #{}:\n", i + 1) << samples[i] << "\n";
+      std::cout << cachescope::format("Sample #{}:\n", i + 1) << samples[i] << "\n";
     }
   }
 
@@ -370,12 +370,12 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
     if (!report_md_path.empty()) {
       std::ofstream out(report_md_path);
       if (!out) {
-        std::cerr << std::format("Failed to open Markdown report: {}\n",
+        std::cerr << cachescope::format("Failed to open Markdown report: {}\n",
                                  report_md_path);
       } else {
         TextReport::write_markdown(out, report);
         if (verbose) {
-          std::cout << std::format("Wrote Markdown report: {}\n",
+          std::cout << cachescope::format("Wrote Markdown report: {}\n",
                                    report_md_path);
         }
       }
@@ -384,12 +384,12 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
     if (!report_json_path.empty()) {
       std::ofstream out(report_json_path);
       if (!out) {
-        std::cerr << std::format("Failed to open JSON report: {}\n",
+        std::cerr << cachescope::format("Failed to open JSON report: {}\n",
                                  report_json_path);
       } else {
         JsonReport::write(out, report);
         if (verbose) {
-          std::cout << std::format("Wrote JSON report: {}\n", report_json_path);
+          std::cout << cachescope::format("Wrote JSON report: {}\n", report_json_path);
         }
       }
     }
@@ -406,7 +406,7 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
   if (record.load_bias) {
     load_bias = *record.load_bias;
     if (verbose) {
-      std::cout << std::format("Detected load bias (proc maps): 0x{:x}\n",
+      std::cout << cachescope::format("Detected load bias (proc maps): 0x{:x}\n",
                                load_bias);
     }
   }
@@ -485,7 +485,7 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
       if (have_ip && min_ip > min_fde_lopc) {
         inferred_bias = min_ip - min_fde_lopc;
         if (verbose) {
-          std::cout << std::format(
+          std::cout << cachescope::format(
             "Inferred load bias (FDE vs runtime IP): 0x{:x}\n", inferred_bias);
         }
       }
@@ -589,11 +589,11 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
   // NOTE: Keep FDE/CIE data alive for Phase 6/7 (we also need CFA there).
 
   if (verbose) {
-    std::cout << std::format("CFA computed: {}  CFA miss: {}\n", cfa_ok,
+    std::cout << cachescope::format("CFA computed: {}  CFA miss: {}\n", cfa_ok,
                              cfa_miss);
   }
 
-  std::cout << std::format("Stack-attributed samples: {} / {}\n\n", stack_hits,
+  std::cout << cachescope::format("Stack-attributed samples: {} / {}\n\n", stack_hits,
                            samples.size());
 
   if (verbose && !var_hits.empty()) {
@@ -606,7 +606,7 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
 
     std::cout << "Top stack variables by hits:\n";
     for (size_t i = 0; i < std::min<size_t>(ranked.size(), 10); ++i) {
-      std::cout << std::format("  {}: {}\n", ranked[i].first, ranked[i].second);
+      std::cout << cachescope::format("  {}: {}\n", ranked[i].first, ranked[i].second);
     }
     std::cout << "\n";
   }
@@ -741,7 +741,7 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
   // Print per-hot-cache-line per-thread hotspots (variable + field path)
   std::cout << "\n=== Phase 7: Field Attribution (Bridge) ===\n\n";
 
-  std::cout << std::format("Resolved variable cache lines: {}\n\n",
+  std::cout << cachescope::format("Resolved variable cache lines: {}\n\n",
                            by_cacheline.size());
 
   using AttributionCounts =
@@ -775,7 +775,7 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
       const auto offset = s.addr - rv.address;
       const auto path   = field_path_for_offset(type, offset);
       const auto label =
-        std::format("{} +0x{:x} ({})", rv.name, offset, path);
+        cachescope::format("{} +0x{:x} ({})", rv.name, offset, path);
       ++counts[s.tid][label];
       return;
     }
@@ -797,10 +797,10 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
         return a.first < b.first;
       });
 
-      std::cout << std::format("  TID {}:\n", tid);
+      std::cout << cachescope::format("  TID {}:\n", tid);
       for (size_t i = 0; i < std::min<size_t>(ranked.size(), 5); ++i) {
-        std::cout << std::format(
-          "    {}  ({} samples; cause: {})\n", ranked[i].first,
+        std::cout << cachescope::format(
+          "    {}  ({} samples; suspected cause: {})\n", ranked[i].first,
           ranked[i].second, cause);
       }
     }
@@ -821,7 +821,7 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
     if (counts.empty()) continue;
 
     ++attributed_false_sharing_lines;
-    std::cout << std::format(
+    std::cout << cachescope::format(
       "False sharing - hot line #{} 0x{:x}:\n", i + 1, line.base_addr);
     print_attributions(counts, "false sharing");
     std::cout << "\n";
@@ -880,7 +880,7 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
     if (counts.empty()) continue;
 
     ++attributed_thrashing_events;
-    std::cout << std::format(
+    std::cout << cachescope::format(
       "Cache thrashing - event #{} L{} {} id={} / set {} / CPUs {}:\n",
       i + 1, event.cache_level, event.cache_type, event.cache_id,
       event.cache_set, event.shared_cpu_list);

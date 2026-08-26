@@ -1,4 +1,6 @@
 build/
+build-clang/
+build-*/
 .cache/
 .cache/*
 compile_commands.json
@@ -6,3 +8,6 @@ brainstorm.txt
 project_diagram.txt
 perf.*
 .github/*
+!.github/workflows/
+.github/workflows/*
+!.github/workflows/ci.yml

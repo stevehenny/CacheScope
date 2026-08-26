@@ -1,0 +1,107 @@
+name: pull-request-ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.compiler }} ${{ matrix.build_type }} gui-${{ matrix.gui }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+        build_type: [Debug, Release]
+        gui: ["ON", "OFF"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build g++ clang \
+            libcli11-dev libdwarf-dev libelf-dev libpfm4-dev \
+            nlohmann-json3-dev libglfw3-dev libgl1-mesa-dev
+      - name: Select compiler
+        run: |
+          if [ "${{ matrix.compiler }}" = "clang" ]; then
+            echo "CXX=clang++" >> "$GITHUB_ENV"
+          else
+            echo "CXX=g++" >> "$GITHUB_ENV"
+          fi
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DCACHESCOPE_BUILD_GUI=${{ matrix.gui }}
+          -DCACHESCOPE_BUILD_WORKLOADS=OFF
+          -DCACHESCOPE_WARNINGS_AS_ERRORS=ON
+          -DBUILD_TESTING=ON
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  sanitizers:
+    name: ${{ matrix.sanitizer }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address, undefined]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build g++ \
+            libcli11-dev libdwarf-dev libelf-dev libpfm4-dev \
+            nlohmann-json3-dev
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCACHESCOPE_BUILD_GUI=OFF
+          -DCACHESCOPE_BUILD_WORKLOADS=OFF
+          -DCMAKE_CXX_FLAGS="-fsanitize=${{ matrix.sanitizer }} -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=${{ matrix.sanitizer }}"
+          -DBUILD_TESTING=ON
+      - name: Build and test
+        run: cmake --build build && ctest --test-dir build --output-on-failure
+
+  ubuntu-2204:
+    name: Ubuntu 22.04 Release
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake g++ libcli11-dev libdwarf-dev libelf-dev libpfm4-dev \
+            nlohmann-json3-dev
+      - name: Configure, build, and test
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCACHESCOPE_BUILD_GUI=OFF \
+            -DCACHESCOPE_BUILD_WORKLOADS=OFF \
+            -DCACHESCOPE_WARNINGS_AS_ERRORS=ON
+          cmake --build build --parallel
+          ctest --test-dir build --output-on-failure

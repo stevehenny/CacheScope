@@ -2,7 +2,7 @@
 #include <libdwarf/libdwarf.h>
 
 #include <cstdint>
-#include <format>
+#include "common/Format.hpp"
 #include <string>
 #include <vector>
 
@@ -137,13 +137,14 @@ struct PerfSample {
   int64_t phys_addr{};
   int64_t sp{};  // sampled user stack pointer (perf --user-regs=sp)
   int64_t bp{};  // sampled user frame pointer (perf --user-regs=bp)
+  uint64_t data_source{};  // perf memory data-source encoding
   int64_t time_stamp{};
   SampleType event_type;
   std::string symbol;
   std::string dso;
 
   friend std::ostream& operator<<(std::ostream& os, const PerfSample& s) {
-    return os << std::format(
+    return os << cachescope::format(
              "TID: {}\nPID: {}\nCPU: {}\nIP: 0x{:x}\nADDR: 0x{:x}\nSP: "
              "0x{:x}\nPHYS_ADDR: 0x{:x}\nBP: 0x{:x}\n"
              "TIME: {}\nSYM: {}\nDSO: {}\n",

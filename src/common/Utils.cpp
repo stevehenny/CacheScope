@@ -27,7 +27,7 @@
 #include <chrono>
 #include <cstring>
 #include <filesystem>
-#include <format>
+#include "common/Format.hpp"
 #include <fstream>
 #include <iostream>
 #include <mutex>
@@ -61,18 +61,18 @@ bool apply_sysfs_field(const std::filesystem::path& path, uint64_t value,
                        perf_event_attr& attr, std::string& error) {
   std::ifstream file(path);
   if (!file) {
-    error = std::format("failed to open {}", path.string());
+    error = cachescope::format("failed to open {}", path.string());
     return false;
   }
   std::string spec;
   if (!std::getline(file, spec)) {
-    error = std::format("failed to read {}", path.string());
+    error = cachescope::format("failed to read {}", path.string());
     return false;
   }
   spec       = trim_copy(spec);
   auto colon = spec.find(':');
   if (colon == std::string::npos) {
-    error = std::format("invalid format spec '{}'", spec);
+    error = cachescope::format("invalid format spec '{}'", spec);
     return false;
   }
   auto reg        = trim_copy(spec.substr(0, colon));
@@ -81,7 +81,7 @@ bool apply_sysfs_field(const std::filesystem::path& path, uint64_t value,
   auto shift_spec = dash == std::string::npos ? bits : bits.substr(0, dash);
   uint64_t shift  = 0;
   if (!parse_u64(shift_spec, shift) || shift >= 64) {
-    error = std::format("invalid bit shift '{}'", shift_spec);
+    error = cachescope::format("invalid bit shift '{}'", shift_spec);
     return false;
   }
   const uint64_t shifted = value << shift;
@@ -92,7 +92,7 @@ bool apply_sysfs_field(const std::filesystem::path& path, uint64_t value,
   } else if (reg == "config2") {
     attr.config2 |= shifted;
   } else {
-    error = std::format("unsupported perf config field '{}'", reg);
+    error = cachescope::format("unsupported perf config field '{}'", reg);
     return false;
   }
   return true;
@@ -103,7 +103,7 @@ bool ensure_pfm_init(std::string& error) {
   static int init_status = PFM_SUCCESS;
   std::call_once(once, []() { init_status = pfm_initialize(); });
   if (init_status != PFM_SUCCESS) {
-    error = std::format("libpfm init failed: {}",
+    error = cachescope::format("libpfm init failed: {}",
                         std::string(pfm_strerror(init_status)));
     return false;
   }
@@ -146,11 +146,11 @@ bool encode_event(const std::string& event, perf_event_attr& attr,
     if (ret == PFM_ERR_NOTFOUND && event == "ibs_op") {
       std::string sysfs_error;
       if (encode_ibs_op_sysfs(attr, sysfs_error)) return true;
-      error = std::format("libpfm failed to encode '{}': {} ({})", event,
+      error = cachescope::format("libpfm failed to encode '{}': {} ({})", event,
                           std::string(pfm_strerror(ret)), sysfs_error);
       return false;
     }
-    error = std::format("libpfm failed to encode '{}': {}", event,
+    error = cachescope::format("libpfm failed to encode '{}': {}", event,
                         std::string(pfm_strerror(ret)));
     return false;
   }
@@ -228,7 +228,7 @@ bool setup_event(pid_t pid, const std::string& name, int sample_period, int cpu,
     fd                  = try_open();
   }
   if (fd == -1) {
-    error = std::format("perf_event_open failed for '{}': {}", name,
+    error = cachescope::format("perf_event_open failed for '{}': {}", name,
                         std::string(std::strerror(errno)));
     return false;
   }
@@ -238,7 +238,7 @@ bool setup_event(pid_t pid, const std::string& name, int sample_period, int cpu,
   void* mmap_base =
     mmap(nullptr, mmap_len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   if (mmap_base == MAP_FAILED) {
-    error = std::format("mmap failed for '{}': {}", name,
+    error = cachescope::format("mmap failed for '{}': {}", name,
                         std::string(std::strerror(errno)));
     close(fd);
     return false;
@@ -273,60 +273,64 @@ bool read_buffer(const char* data, size_t data_size, uint64_t offset, void* dst,
   return true;
 }
 
-void parse_sample(const perf_event_attr& attr, SampleType type,
+bool parse_sample(const perf_event_attr& attr, SampleType type,
                   const uint8_t* data, size_t size,
-                  std::vector<PerfSample>& out) {
-  const uint8_t* p   = data;
+                  std::vector<PerfSample>& output) {
+  const uint8_t* cursor = data;
   const uint8_t* end = data + size;
 
-  auto need     = [&](size_t n) { return static_cast<size_t>(end - p) >= n; };
-  auto read_u32 = [&]() {
-    uint32_t v = 0;
-    if (need(sizeof(v))) {
-      std::memcpy(&v, p, sizeof(v));
-      p += sizeof(v);
-    }
-    return v;
+  auto read_u32 = [&](uint32_t& value) {
+    if (static_cast<size_t>(end - cursor) < sizeof(value)) return false;
+    std::memcpy(&value, cursor, sizeof(value));
+    cursor += sizeof(value);
+    return true;
   };
-  auto read_u64 = [&]() {
-    uint64_t v = 0;
-    if (need(sizeof(v))) {
-      std::memcpy(&v, p, sizeof(v));
-      p += sizeof(v);
-    }
-    return v;
+  auto read_u64 = [&](uint64_t& value) {
+    if (static_cast<size_t>(end - cursor) < sizeof(value)) return false;
+    std::memcpy(&value, cursor, sizeof(value));
+    cursor += sizeof(value);
+    return true;
   };
 
-  PerfSample s{};
-  s.event_type = type;
+  PerfSample sample{};
+  sample.event_type = type;
+  uint64_t value64 = 0;
+  uint32_t value32 = 0;
 
-  if (attr.sample_type & PERF_SAMPLE_IP)
-    s.ip = static_cast<int64_t>(read_u64());
-  if (attr.sample_type & PERF_SAMPLE_TID) {
-    s.pid = read_u32();
-    s.tid = read_u32();
+  if ((attr.sample_type & PERF_SAMPLE_IP) != 0) {
+    if (!read_u64(value64)) return false;
+    sample.ip = static_cast<int64_t>(value64);
   }
-  if (attr.sample_type & PERF_SAMPLE_TIME)
-    s.time_stamp = static_cast<int64_t>(read_u64());
-  if (attr.sample_type & PERF_SAMPLE_ADDR)
-    s.addr = static_cast<int64_t>(read_u64());
-  if (attr.sample_type & PERF_SAMPLE_CPU) {
-    s.cpu = read_u32();
-    (void)read_u32();
+  if ((attr.sample_type & PERF_SAMPLE_TID) != 0) {
+    if (!read_u32(sample.pid) || !read_u32(sample.tid)) return false;
+  }
+  if ((attr.sample_type & PERF_SAMPLE_TIME) != 0) {
+    if (!read_u64(value64)) return false;
+    sample.time_stamp = static_cast<int64_t>(value64);
+  }
+  if ((attr.sample_type & PERF_SAMPLE_ADDR) != 0) {
+    if (!read_u64(value64)) return false;
+    sample.addr = static_cast<int64_t>(value64);
+  }
+  if ((attr.sample_type & PERF_SAMPLE_CPU) != 0) {
+    if (!read_u32(sample.cpu) || !read_u32(value32)) return false;
   }
 
-  if (attr.sample_type & PERF_SAMPLE_REGS_USER) {
-    const uint64_t abi = read_u64();
+  if ((attr.sample_type & PERF_SAMPLE_REGS_USER) != 0) {
+    uint64_t abi = 0;
+    if (!read_u64(abi)) return false;
     if (abi != PERF_SAMPLE_REGS_ABI_NONE) {
       uint64_t mask = attr.sample_regs_user;
-      for (uint32_t i = 0; mask; ++i) {
-        if (mask & 1ULL) {
-          const uint64_t val = read_u64();
+      for (uint32_t index = 0; mask != 0; ++index) {
+        if ((mask & 1ULL) != 0) {
+          if (!read_u64(value64)) return false;
 #if defined(__x86_64__) || defined(__i386__)
-          if (i == PERF_REG_X86_SP) s.sp = static_cast<int64_t>(val);
-          if (i == PERF_REG_X86_BP) s.bp = static_cast<int64_t>(val);
-#else
-          (void)val;
+          if (index == PERF_REG_X86_SP) {
+            sample.sp = static_cast<int64_t>(value64);
+          }
+          if (index == PERF_REG_X86_BP) {
+            sample.bp = static_cast<int64_t>(value64);
+          }
 #endif
         }
         mask >>= 1U;
@@ -334,43 +338,102 @@ void parse_sample(const perf_event_attr& attr, SampleType type,
     }
   }
 
-  if (attr.sample_type & PERF_SAMPLE_DATA_SRC) (void)read_u64();
-  if (attr.sample_type & PERF_SAMPLE_PHYS_ADDR)
-    s.phys_addr = static_cast<int64_t>(read_u64());
-
-  out.push_back(std::move(s));
+  if ((attr.sample_type & PERF_SAMPLE_DATA_SRC) != 0) {
+    if (!read_u64(value64)) return false;
+    sample.data_source = value64;
+  }
+  if ((attr.sample_type & PERF_SAMPLE_PHYS_ADDR) != 0) {
+    if (!read_u64(value64)) return false;
+    sample.phys_addr = static_cast<int64_t>(value64);
+  }
+  if (cursor != end) return false;
+  output.push_back(std::move(sample));
+  return true;
 }
 
-void read_event_samples(PerfEventHandle& ev, std::vector<PerfSample>& out) {
-  if (ev.mmap_base == MAP_FAILED) return;
+PerfReadStats read_event_samples(PerfEventHandle& event,
+                                 std::vector<PerfSample>& output) {
+  PerfReadStats stats;
+  if (event.mmap_base == MAP_FAILED) return stats;
 
   const size_t page_size = static_cast<size_t>(sysconf(_SC_PAGESIZE));
-  auto* meta             = static_cast<perf_event_mmap_page*>(ev.mmap_base);
-  char* data             = static_cast<char*>(ev.mmap_base) + page_size;
-  const size_t data_size = ev.mmap_len - page_size;
+  if (event.mmap_len <= page_size) {
+    ++stats.malformed;
+    return stats;
+  }
+  auto* metadata =
+    static_cast<perf_event_mmap_page*>(event.mmap_base);
+  char* data = static_cast<char*>(event.mmap_base) + page_size;
+  const size_t data_size = event.mmap_len - page_size;
+  if ((data_size & (data_size - 1)) != 0) {
+    ++stats.malformed;
+    return stats;
+  }
 
-  uint64_t head = meta->data_head;
+  uint64_t head = metadata->data_head;
   std::atomic_thread_fence(std::memory_order_acquire);
-  uint64_t tail = meta->data_tail;
+  uint64_t tail = metadata->data_tail;
+  if (head < tail) {
+    ++stats.malformed;
+    metadata->data_tail = head;
+    return stats;
+  }
+  if (head - tail > data_size) {
+    ++stats.malformed;
+    tail = head - data_size;
+  }
 
+  const size_t samples_before = output.size();
   while (tail < head) {
-    perf_event_header header{};
-    read_buffer(data, data_size, tail, &header, sizeof(header));
-    if (header.size == 0) break;
-
-    std::vector<uint8_t> record(header.size);
-    read_buffer(data, data_size, tail, record.data(), header.size);
-
-    if (header.type == PERF_RECORD_SAMPLE) {
-      const uint8_t* payload  = record.data() + sizeof(perf_event_header);
-      const size_t payload_sz = record.size() - sizeof(perf_event_header);
-      parse_sample(ev.attr, ev.type, payload, payload_sz, out);
+    const uint64_t remaining = head - tail;
+    if (remaining < sizeof(perf_event_header)) {
+      ++stats.malformed;
+      tail = head;
+      break;
     }
 
+    perf_event_header header{};
+    if (!read_buffer(data, data_size, tail, &header, sizeof(header)) ||
+        header.size < sizeof(perf_event_header) ||
+        header.size > data_size || header.size > remaining) {
+      ++stats.malformed;
+      tail = head;
+      break;
+    }
+
+    std::vector<uint8_t> record(header.size);
+    if (!read_buffer(data, data_size, tail, record.data(), record.size())) {
+      ++stats.malformed;
+      tail = head;
+      break;
+    }
+    const uint8_t* payload = record.data() + sizeof(perf_event_header);
+    const size_t payload_size =
+      record.size() - sizeof(perf_event_header);
+
+    if (header.type == PERF_RECORD_SAMPLE) {
+      if (!parse_sample(event.attr, event.type, payload, payload_size,
+                        output)) {
+        ++stats.malformed;
+      }
+    } else if (header.type == PERF_RECORD_LOST) {
+      if (payload_size != 2 * sizeof(uint64_t)) {
+        ++stats.malformed;
+      } else {
+        uint64_t lost = 0;
+        std::memcpy(&lost, payload + sizeof(uint64_t), sizeof(lost));
+        stats.lost += lost;
+      }
+    } else if (header.type == PERF_RECORD_THROTTLE) {
+      ++stats.throttled;
+    }
     tail += header.size;
   }
 
-  meta->data_tail = tail;
+  stats.samples = output.size() - samples_before;
+  std::atomic_thread_fence(std::memory_order_release);
+  metadata->data_tail = tail;
+  return stats;
 }
 
 ProcMapInfo read_proc_maps(pid_t pid, const std::string& binary) {
@@ -383,7 +446,7 @@ ProcMapInfo read_proc_maps(pid_t pid, const std::string& binary) {
     bin_path = binary;
   }
 
-  std::ifstream maps(std::format("/proc/{}/maps", pid));
+  std::ifstream maps(cachescope::format("/proc/{}/maps", pid));
   std::string line;
   while (std::getline(maps, line)) {
     if (line.find(bin_name) == std::string::npos &&
