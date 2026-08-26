@@ -4,212 +4,197 @@
 
 <h1 align="center">CacheScope</h1>
 
-<p align="center">
-  <a href="LICENSE">
-    <img src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square" alt="MIT License">
-  </a>
-  <a href="https://isocpp.org/">
-    <img src="https://img.shields.io/badge/C%2B%2B-20-blue.svg?style=flat-square" alt="C++20">
-  </a>
-  <a href="https://github.com/stevehenny/CacheScope/issues">
-    <img src="https://img.shields.io/github/issues/stevehenny/CacheScope?style=flat-square" alt="GitHub issues">
-  </a>
-  <a href="https://github.com/stevehenny/CacheScope/stargazers">
-    <img src="https://img.shields.io/github/stars/stevehenny/CacheScope?style=flat-square" alt="GitHub stars">
-  </a>
-</p>
+CacheScope records Linux hardware-PMU memory samples and analyzes them for
+suspected false sharing and cache-set thrashing. Captures use a reproducible
+binary trace so collection and analysis can run separately.
 
-**CacheScope** is a visualization and analysis tool for cache-line bouncing and false sharing in multithreaded C++ programs.
+## Production-beta scope
 
-It helps developers identify performance-critical areas where threads contend on the same cache lines, enabling optimization of data structures and memory-access patterns.
+The beta targets Linux x86-64, kernel 5.8 or newer, Ubuntu 22.04/24.04, and
+Intel PEBS or AMD IBS user-process profiling. The default scope is one target
+process and its threads. Descendant processes, ARM64, kernel profiling,
+containers, remote capture, and distributed analysis are deferred.
 
----
+Findings are evidence-based suspected causes, not definitive diagnoses. Reports
+include confidence, attribution evidence, capture capabilities, sample loss,
+and limitations.
 
 ## Dependencies
 
-Install the required packages for your distribution.
+Ubuntu and Debian:
 
-### Arch Linux
+~~~bash
+sudo apt install \
+  cmake g++ libcli11-dev libdwarf-dev libelf-dev libpfm4-dev \
+  nlohmann-json3-dev libglfw3-dev libgl1-mesa-dev
+~~~
 
-The GLFW package may be `glfw-x11` or `glfw-wayland`, depending on your environment.
+Fedora:
 
-```bash
-sudo pacman -S cli11 libdwarf libelf libpfm glfw mesa
-```
+~~~bash
+sudo dnf install \
+  cmake gcc-c++ cli11-devel libdwarf-devel elfutils-libelf-devel \
+  libpfm-devel json-devel glfw-devel mesa-libGL-devel
+~~~
 
-### Ubuntu or Debian
+Arch Linux:
 
-```bash
-sudo apt install libcli11-dev libdwarf-dev libelf-dev libpfm4-dev libglfw3-dev libgl1-mesa-dev
-```
+~~~bash
+sudo pacman -S cmake gcc cli11 libdwarf libelf libpfm nlohmann-json glfw mesa
+~~~
 
-### Fedora
+ImGui is included as a Git submodule. If nlohmann_json is not installed, CMake
+fetches pinned version 3.11.3.
 
-```bash
-sudo dnf install cli11-devel libdwarf-devel elfutils-libelf-devel libpfm-devel glfw-devel mesa-libGL-devel
-```
+## Build
 
-ImGui is included as a Git submodule under `third_party/imgui`.
-
----
-
-## Motivation
-
-False sharing is one of the most subtle and impactful performance problems in multithreaded applications. Despite its importance, few user-friendly tools correlate:
-
-* C++ struct layouts
-* Per-thread memory-access patterns
-* CPU cache-line mappings
-
-CacheScope fills this gap by giving developers actionable insights into cache usage and cross-thread contention.
-
----
-
-## Features Added
-
-* **False-sharing analysis:** Identify cache lines accessed by multiple threads.
-* **Cache-line reporting:** Group sampled memory accesses by cache line.
-* **Thread-aware statistics:** Track the threads involved in cache-line contention.
-* **Bounce-score calculation:** Estimate the severity of cache-line bouncing.
-* **Markdown reports:** Export human-readable reports with `--report-md`.
-* **JSON reports:** Export machine-readable reports with `--report-json`.
-* **Process monitoring:** Attach to a running process using monitor mode.
-* **Graphical report viewer:** Inspect generated reports through the ImGui-based interface.
-
----
-
-- **Report output**: Export false sharing results to Markdown or JSON with
-  `--report-md` and `--report-json`.
-- **Cache-thrashing detection**: Find recurring, over-capacity reuse within
-  cache sets and report the responsible CPU, set, time range, eviction reload
-  ratio, and confidence score.
-
----
-
-## Installation
-
-Clone the repository and initialize its Git submodules:
-
-```bash
+~~~bash
 git clone https://github.com/stevehenny/CacheScope.git
 cd CacheScope
 git submodule update --init --recursive
-```
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
+~~~
 
-Configure and build the project:
+For a CLI-only build:
 
-```bash
-mkdir build
-cd build
-cmake ..
-cmake --build .
-```
+~~~bash
+cmake -S . -B build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCACHESCOPE_BUILD_GUI=OFF
+~~~
 
-To disable the graphical interface and build only the command-line tool:
+Build options include CACHESCOPE_BUILD_GUI, CACHESCOPE_BUILD_TESTS,
+CACHESCOPE_BUILD_WORKLOADS, CACHESCOPE_WARNINGS_AS_ERRORS, and
+CACHESCOPE_ENABLE_PACKAGING. CacheScope does not override CMAKE_BUILD_TYPE.
 
-```bash
-cmake .. -DCACHESCOPE_BUILD_GUI=OFF
-cmake --build .
-```
+## Preflight and permissions
 
-## Cache-thrashing detection
+Run diagnostics before collection:
 
-CacheScope discovers every data and unified cache instance from Linux sysfs,
-including its level, size, line size, set count, associativity, and shared CPU
-domain. No cache-geometry arguments are required:
+~~~bash
+build/src/cache_scope doctor
+~~~
 
-```bash
-./cache_scope analyze ./my_binary
-```
+Doctor checks the architecture, CPU vendor, Intel/AMD PMU availability,
+perf_event_paranoid, CAP_PERFMON, and cache topology. Event-dependent
+capabilities are validated again when collection opens the PMU.
 
-The sampled trace is replayed independently through each L1 data, L2, and
-last-level cache instance. Private-cache activity is grouped by the CPUs sharing
-that cache, while LLC activity is grouped across the complete shared CPU
-domain. An episode is reported when more lines compete for a set than its
-associativity allows and evicted lines are repeatedly accessed again. Requiring
-post-eviction reloads avoids treating a one-pass memory stream as thrashing.
+Prefer running unprivileged with the minimum perf permission required by local
+policy. An administrator can grant CAP_PERFMON or adjust
+kernel.perf_event_paranoid. CacheScope refuses to launch a target with effective
+UID 0 unless --allow-root-target is explicit. Privileged attach remains
+available with diagnostics.
 
-CacheScope requests physical addresses from `perf_event_open` for accurate
-higher-level indexing. Reports identify the address basis used:
+## Commands
 
-- `physical`: physical addresses were available.
-- `virtual-page-offset`: virtual indexing is exact because all set-index bits
-  are inside the page offset, which is typical for L1.
-- `virtual-estimate`: the kernel did not expose physical addresses and the
-  higher-level set mapping is therefore an estimate.
+Record a target and its arguments:
 
-Some last-level caches apply undocumented slice/index hashing. Even with
-physical addresses, LLC set results should be treated as strong heuristic
-evidence unless the processor's hash is known.
+~~~bash
+build/src/cache_scope record -o recording.cst -- ./program arg1 arg2
+~~~
 
-A synthetic same-set workload is built as `build/src/test/cache_thrash` for
-manual end-to-end profiling.
+Select events and period:
 
----
+~~~bash
+build/src/cache_scope record \
+  -o recording.cst \
+  -e mem-loads,mem-stores \
+  -c 10000 \
+  -- ./program arg1
+~~~
 
-## Usage
+AMD systems normally use ibs_op; doctor reports whether the IBS PMU exists.
 
-### Analyze a program
+Analyze offline:
 
-```bash
-./cache_scope analyze ./my_binary
-```
-
-Generate Markdown and JSON reports:
-
-```bash
-./cache_scope analyze ./my_binary \
+~~~bash
+build/src/cache_scope analyze \
+  --trace recording.cst \
   --report-md report.md \
   --report-json report.json
-```
+~~~
 
-### Monitor a running process
+Record and analyze in one command:
 
-```bash
-./cache_scope monitor <pid>
-```
+~~~bash
+build/src/cache_scope run --keep-trace -- ./program arg1 arg2
+~~~
 
-Generate reports while monitoring:
+Run uses a secure temporary trace. It deletes the trace only after successful
+analysis and report output. On analysis/report failure it preserves and prints
+the trace path. After success, run propagates the target exit status.
 
-```bash
-./cache_scope monitor <pid> \
-  --report-md report.md \
-  --report-json report.json
-```
+The deprecated analyze-binary form remains for compatibility, but automation
+should use record, analyze --trace, or run.
 
-Monitor mode attaches to a running process and skips DWARF-dependent attribution. It currently focuses on live sampling and cache-line reporting.
+Attach and optionally preserve a trace:
 
----
+~~~bash
+build/src/cache_scope monitor 1234
+build/src/cache_scope monitor 1234 --output monitoring.cst
+~~~
 
-## GUI Report Viewer
+Open a report:
 
-Open a generated JSON report using either supported report-viewer command:
+~~~bash
+build/src/cache_scope report report.json
+~~~
 
-```bash
-./cache_scope report report.json
-```
+The GUI and CLI use the same canonical parser. The viewer accepts unversioned
+legacy and schema-1.0 reports and shows capabilities, loss/truncation warnings,
+confidence, suspected causes, cache topology, and attribution evidence.
 
-```bash
-./cache_scope_gui report.json
-```
+## Traces and sensitive data
 
-The GUI provides a visual overview of cache-line contention, participating threads, sample counts, and bounce scores.
+CST traces are little-endian, versioned, framed binary files with sequenced
+records and CRC32 payload checksums. Metadata is capped at 4 MiB and each frame
+at 1 MiB. Readers reject invalid magic, unsupported major versions, bad sizes,
+broken sequences, checksum failures, truncation, and incomplete captures.
+Newer minor versions and unknown future frame types are accepted safely.
 
----
+Trace and report files use mode 0600. They can contain executable paths,
+arguments, thread identifiers, and memory addresses. Treat them as sensitive
+diagnostic artifacts.
 
-## Stack-Variable Attribution
+## Reports and confidence
 
-To obtain non-zero **stack-attributed samples**, build the target program with debugging information and avoid stripping its symbols.
+New JSON reports use schema 1.0. CacheScope reads unversioned reports through a
+legacy adapter and writes only schema 1.0. JSON and Markdown replacement is
+atomic.
 
-For GCC or Clang:
+Reports include tool/capture/platform metadata, PMU capabilities, lost and
+malformed records, effective thresholds, topology, address-basis limitations,
+suspected causes, confidence, attribution evidence, warnings, and remediation.
+Unavailable capabilities are limitations, never zero-result conclusions.
 
-```bash
--g
-```
+## Exit statuses
 
-CacheScope uses DWARF call-frame information from `.eh_frame` or `.debug_frame` to calculate the canonical frame address. Frame pointers are therefore not required.
+- 0: tool and target success.
+- 2: usage.
+- 3: unsupported platform/capability.
+- 4: permission or safe-operation refusal.
+- 5: I/O or schema failure.
+- 6: collection failure.
+- 70: internal failure.
+- 130: interrupted operation.
 
----
+A successful run returns a nonzero target status unchanged; target signals
+return 128 plus the signal number.
+
+## Testing and release qualification
+
+CTest covers detector controls, topology, trace framing/checksums, bounded
+sample eviction, ring wrapping/malformed records, and legacy/schema-1.0 JSON.
+
+CI builds GCC/Clang, Debug/Release, GUI on/off with warnings as errors. Separate
+ASan/UBSan jobs run deterministic tests, and Ubuntu 22.04 receives a Release
+smoke build.
+
+Release tags additionally require manual Intel PEBS and AMD IBS qualification
+using false-sharing, true-sharing, fixed-sharing, thrashing, streaming, and
+non-thrashing controls compared with perf c2c and perf mem.
 
 ## License
 

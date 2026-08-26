@@ -22,6 +22,9 @@ add_library(gui
 target_link_libraries(gui
   PUBLIC
     cache_scope_includes
+    report
+    cachescope_project_options
+    cachescope_warnings
     imgui
 )
 

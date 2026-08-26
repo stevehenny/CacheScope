@@ -800,7 +800,7 @@ void AnalyzeCommand::run(const AnalyzeOptions& options) {
       std::cout << std::format("  TID {}:\n", tid);
       for (size_t i = 0; i < std::min<size_t>(ranked.size(), 5); ++i) {
         std::cout << std::format(
-          "    {}  ({} samples; cause: {})\n", ranked[i].first,
+          "    {}  ({} samples; suspected cause: {})\n", ranked[i].first,
           ranked[i].second, cause);
       }
     }

@@ -6,6 +6,8 @@ add_library(cachescope_dwarf
 target_link_libraries(cachescope_dwarf
   PUBLIC
     cache_scope_includes
+    cachescope_project_options
+    cachescope_warnings
     dwarf
     elf
 )
