@@ -5,7 +5,7 @@
 
 #include <chrono>
 #include <filesystem>
-#include <format>
+#include "common/Format.hpp"
 #include <iostream>
 #include <limits>
 #include <optional>
@@ -37,7 +37,7 @@ public:
   explicit ConsoleProgress(bool verbose) : verbose_(verbose) {}
   void update(std::string_view phase, double fraction) override {
     if (verbose_) {
-      std::cerr << std::format("[{:3.0f}%] {}\n", fraction * 100.0, phase);
+      std::cerr << cachescope::format("[{:3.0f}%] {}\n", fraction * 100.0, phase);
     }
   }
 
@@ -243,7 +243,7 @@ int analyze_trace(const std::filesystem::path& trace_path,
     return cachescope::exit_status(result.error());
   }
 
-  std::cout << std::format(
+  std::cout << cachescope::format(
     "Analyzed {} samples: {} suspected false-sharing findings, "
     "{} suspected cache-thrashing findings\n",
     result.value().stats.total_samples,
@@ -259,7 +259,7 @@ int analyze_trace(const std::filesystem::path& trace_path,
 std::string resolve_binary(pid_t pid) {
   std::error_code error;
   const auto path =
-    std::filesystem::read_symlink(std::format("/proc/{}/exe", pid), error);
+    std::filesystem::read_symlink(cachescope::format("/proc/{}/exe", pid), error);
   return error ? std::string{} : path.string();
 }
 
@@ -519,7 +519,7 @@ int main(int argc, char* argv[]) {
                 cachescope::linux_platform::CheckStatus::Warning
               ? "WARN"
               : "FAIL";
-      std::cout << std::format("[{}] {}: {}\n", status, check.name,
+      std::cout << cachescope::format("[{}] {}: {}\n", status, check.name,
                                check.detail);
       if (!check.remediation.empty()) {
         std::cout << "       " << check.remediation << '\n';

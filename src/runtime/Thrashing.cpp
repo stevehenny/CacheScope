@@ -3,7 +3,7 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <format>
+#include "common/Format.hpp"
 #include <iostream>
 #include <list>
 #include <ranges>
@@ -241,10 +241,10 @@ void ThrashingAnalysis::print(const std::vector<ThrashingEvent>& events,
                               const std::vector<CacheInfo>& caches,
                               size_t max_events) {
   std::cout << "\n=== Cache Thrashing Analysis ===\n";
-  std::cout << std::format("Detected {} data/unified cache instances:\n",
+  std::cout << cachescope::format("Detected {} data/unified cache instances:\n",
                            caches.size());
   for (const auto& cache : caches) {
-    std::cout << std::format(
+    std::cout << cachescope::format(
       "  L{} {} id={} CPUs={}  {} KiB, {} sets x {} ways x {} bytes{}\n",
       cache.level, cache.type, cache.id, cache.shared_cpu_list,
       cache.size_bytes / 1024, cache.sets, cache.associativity,
@@ -263,7 +263,7 @@ void ThrashingAnalysis::print(const std::vector<ThrashingEvent>& events,
     const auto duration = event.end_time_ns > event.start_time_ns
                             ? event.end_time_ns - event.start_time_ns
                             : 0;
-    std::cout << std::format(
+    std::cout << cachescope::format(
       "Event #{}: L{} {} id={} / set {} / CPUs {}\n"
       "  Samples: {} across {} threads, {} CPUs, and {} unique lines\n"
       "  Evictions: {} (reloaded={}, reload ratio={:.3f})\n"

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <format>
+#include "common/Format.hpp"
 #include <ostream>
 
 #include "report/Report.hpp"
@@ -11,16 +11,16 @@ struct TextReport {
     output << "# CacheScope Report\n\n";
     output << "Schema: " << report.schema_version << "\n\n";
     output << "## Metadata\n\n";
-    output << std::format("- Binary: {}\n- Event: {}\n- Sample period: {}\n",
+    output << cachescope::format("- Binary: {}\n- Event: {}\n- Sample period: {}\n",
                           report.metadata.binary, report.metadata.event,
                           report.metadata.sample_rate);
-    output << std::format("- Tool: {}\n- Kernel: {}\n- CPU: {}\n",
+    output << cachescope::format("- Tool: {}\n- Kernel: {}\n- CPU: {}\n",
                           report.capture.tool_version,
                           report.capture.kernel_release,
                           report.capture.cpu_model);
 
     output << "\n## Capabilities and Sample Quality\n\n";
-    output << std::format(
+    output << cachescope::format(
       "- Perf events: {}\n- Intel PEBS: {}\n- AMD IBS: {}\n"
       "- Physical addresses: {}\n- User registers: {}\n",
       report.capture.capabilities.perf_events ? "available" : "unavailable",
@@ -30,7 +30,7 @@ struct TextReport {
         ? "available" : "unavailable",
       report.capture.capabilities.user_registers
         ? "available" : "unavailable");
-    output << std::format(
+    output << cachescope::format(
       "- Samples: {}\n- Lost: {}\n- Throttled: {}\n"
       "- Malformed records: {}\n- Evicted by cap: {}\n"
       "- Capture completed: {}\n",
@@ -40,7 +40,7 @@ struct TextReport {
       report.quality.completed ? "yes" : "no");
 
     output << "\n## Analysis Thresholds\n\n";
-    output << std::format(
+    output << cachescope::format(
       "- False-sharing minimum samples: {}\n"
       "- False-sharing minimum bounce: {:.3f}\n"
       "- False-sharing minimum private fraction: {:.3f}\n"
@@ -57,7 +57,7 @@ struct TextReport {
       report.thresholds.thrashing_max_gap_ns);
 
     output << "\n## Sample Statistics\n\n";
-    output << std::format(
+    output << cachescope::format(
       "- Total samples: {}\n- Samples with address: {}\n"
       "- Samples with physical address: {}\n- Samples with IP: {}\n"
       "- Samples with SP: {}\n- Samples with BP: {}\n"
@@ -75,14 +75,14 @@ struct TextReport {
                 "Confidence | Suspected cause |\n";
       output << "|---:|---:|---:|---:|---:|---:|---:|---|\n";
       for (const auto& finding : report.false_sharing) {
-        output << std::format(
+        output << cachescope::format(
           "| {} | {} | {} | {} | {:.3f} | {:.3f} | {:.3f} | {} |\n",
           finding.index, format_hex_addr(finding.base_addr),
           finding.sample_count, finding.unique_threads,
           finding.bounce_score, finding.private_offset_fraction,
           finding.confidence, finding.suspected_cause);
         for (const auto& attribution : finding.attribution) {
-          output << std::format(
+          output << cachescope::format(
             "\n- Attribution: {} {} {} ({} samples, confidence {:.3f})\n",
             attribution.scope, attribution.variable, attribution.field_path,
             attribution.sample_count, attribution.confidence);
@@ -99,7 +99,7 @@ struct TextReport {
               "Shared CPUs | Source |\n";
     output << "|---|---|---:|---:|---:|---:|---:|---|---|\n";
     for (const auto& cache : report.cache_topology) {
-      output << std::format(
+      output << cachescope::format(
         "| L{} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
         cache.level, cache.type, cache.id, cache.size_bytes / 1024,
         cache.line_size, cache.sets, cache.associativity,
@@ -115,7 +115,7 @@ struct TextReport {
                 "Confidence | Suspected cause |\n";
       output << "|---:|---|---:|---|---:|---:|---:|---:|---|\n";
       for (const auto& finding : report.cache_thrashing) {
-        output << std::format(
+        output << cachescope::format(
           "| {} | L{} {} {} | {} | {} | {} | {} | {:.3f} | {:.3f} | {} |\n",
           finding.index, finding.cache_level, finding.cache_type,
           finding.cache_id, finding.cache_set, finding.address_basis,
@@ -129,7 +129,7 @@ struct TextReport {
       output << "None reported.\n";
     } else {
       for (const auto& diagnostic : report.diagnostics) {
-        output << std::format("- **{}** {}: {}", diagnostic.severity,
+        output << cachescope::format("- **{}** {}: {}", diagnostic.severity,
                               diagnostic.code, diagnostic.message);
         if (!diagnostic.remediation.empty()) {
           output << " " << diagnostic.remediation;

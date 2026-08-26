@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <format>
+#include "common/Format.hpp"
 #include <string>
 #include <vector>
 
@@ -100,7 +100,7 @@ struct AnalysisResult {
 using Report = AnalysisResult;
 
 inline std::string format_hex_addr(int64_t addr) {
-  return std::format("0x{:x}", static_cast<uint64_t>(addr));
+  return cachescope::format("0x{:x}", static_cast<uint64_t>(addr));
 }
 
 inline AnalysisResult AnalysisResult::from_false_sharing(
@@ -202,13 +202,13 @@ inline AnalysisResult AnalysisResult::from_analysis(
   if (quality.lost != 0) {
     report.diagnostics.push_back(
       {"warning", "capture.sample_loss",
-       std::format("{} perf samples were lost", quality.lost),
+       cachescope::format("{} perf samples were lost", quality.lost),
        "Reduce sampling frequency or increase perf ring-buffer capacity."});
   }
   if (quality.truncated) {
     report.diagnostics.push_back(
       {"warning", "analysis.sample_cap",
-       std::format("{} samples were evicted by the analysis cap",
+       cachescope::format("{} samples were evicted by the analysis cap",
                    quality.evicted_samples),
        "Increase the configured sample cap if memory permits."});
   }

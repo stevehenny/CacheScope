@@ -1,6 +1,6 @@
 #include "runtime/SampleStats.hpp"
 
-#include <format>
+#include "common/Format.hpp"
 #include <ostream>
 #include <unordered_set>
 
@@ -36,7 +36,7 @@ std::ostream& operator<<(std::ostream& os, const SampleStats& s) {
     return os << "\n=== Sample Statistics ===\nNo samples collected\n";
   }
 
-  return os << std::format(
+  return os << cachescope::format(
            "\n=== Sample Statistics ===\n"
            "Total samples: {}\n"
            "Samples with address: {} ({:.1f}%)\n"

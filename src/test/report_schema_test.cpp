@@ -2,6 +2,7 @@
 #include <sstream>
 #include <string_view>
 
+#include "common/Format.hpp"
 #include "report/JsonReport.hpp"
 
 namespace {
@@ -16,6 +17,11 @@ bool expect(bool condition, std::string_view message) {
 
 int main() {
   bool ok = true;
+
+  ok &= expect(
+    cachescope::format("{} 0x{:x} {:.1f} [{:3.0f}%]", "value", 255,
+                       1.26, 7.0) == "value 0xff 1.3 [  7%]",
+    "portable formatting should preserve width, precision, and hex output");
 
   AnalysisResult result;
   result.metadata.binary = "/tmp/a\"b";

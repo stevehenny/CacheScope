@@ -15,7 +15,7 @@
 #include <charconv>
 #include <cstring>
 #include <filesystem>
-#include <format>
+#include "common/Format.hpp"
 #include <iostream>
 #include <unordered_map>
 #include <unordered_set>
@@ -62,7 +62,7 @@ int open_pidfd(pid_t pid) {
 
 std::vector<pid_t> list_threads(pid_t pid) {
   std::vector<pid_t> tids;
-  const std::filesystem::path task_dir = std::format("/proc/{}/task", pid);
+  const std::filesystem::path task_dir = cachescope::format("/proc/{}/task", pid);
   std::error_code error;
   std::filesystem::directory_iterator it(task_dir, error);
   if (error) return tids;
@@ -251,7 +251,7 @@ PerfRecordResult PerfEventRecorder::record_binary(
 
   int status_pipe[2]{-1, -1};
   if (pipe2(status_pipe, O_CLOEXEC) != 0) {
-    result.error = std::format("exec-status pipe failed: {}",
+    result.error = cachescope::format("exec-status pipe failed: {}",
                                std::strerror(errno));
     return result;
   }
@@ -260,7 +260,7 @@ PerfRecordResult PerfEventRecorder::record_binary(
 
   const pid_t pid = fork();
   if (pid < 0) {
-    result.error = std::format("fork failed: {}", std::strerror(errno));
+    result.error = cachescope::format("fork failed: {}", std::strerror(errno));
     return result;
   }
 
@@ -310,15 +310,25 @@ PerfRecordResult PerfEventRecorder::record_binary(
     wait_result = waitpid(pid, &wait_status, WUNTRACED);
   } while (wait_result < 0 && errno == EINTR);
   if (wait_result < 0) {
-    result.error = std::format("waitpid failed: {}", std::strerror(errno));
+    result.error = cachescope::format("waitpid failed: {}", std::strerror(errno));
     reap_and_kill();
     return result;
   }
   if (!WIFSTOPPED(wait_status)) {
     int child_errno = 0;
-    (void)::read(status_read.get(), &child_errno, sizeof(child_errno));
+    ssize_t status_read_result = -1;
+    do {
+      status_read_result =
+        ::read(status_read.get(), &child_errno, sizeof(child_errno));
+    } while (status_read_result < 0 && errno == EINTR);
+    if (status_read_result < 0) {
+      result.error =
+        cachescope::format("exec-status read failed: {}", std::strerror(errno));
+      set_target_status(result, wait_status);
+      return result;
+    }
     result.error = child_errno != 0
-      ? std::format("target setup failed: {}", std::strerror(child_errno))
+      ? cachescope::format("target setup failed: {}", std::strerror(child_errno))
       : "child did not stop before exec";
     set_target_status(result, wait_status);
     return result;
@@ -333,7 +343,7 @@ PerfRecordResult PerfEventRecorder::record_binary(
 
   if (kill(pid, SIGCONT) != 0) {
     result.error =
-      std::format("failed to resume child: {}", std::strerror(errno));
+      cachescope::format("failed to resume child: {}", std::strerror(errno));
     teardown_events(handles);
     reap_and_kill();
     return result;
@@ -346,7 +356,7 @@ PerfRecordResult PerfEventRecorder::record_binary(
   } while (exec_read < 0 && errno == EINTR);
   if (exec_read > 0) {
     result.error =
-      std::format("execv '{}' failed: {}", binary, std::strerror(exec_errno));
+      cachescope::format("execv '{}' failed: {}", binary, std::strerror(exec_errno));
     teardown_events(handles);
     int child_status = 0;
     while (waitpid(pid, &child_status, 0) < 0 && errno == EINTR) {
@@ -356,7 +366,7 @@ PerfRecordResult PerfEventRecorder::record_binary(
   }
   if (exec_read < 0) {
     result.error =
-      std::format("exec-status read failed: {}", std::strerror(errno));
+      cachescope::format("exec-status read failed: {}", std::strerror(errno));
     teardown_events(handles);
     reap_and_kill();
     return result;
@@ -374,7 +384,7 @@ PerfRecordResult PerfEventRecorder::record_binary(
       poll_result = poll(descriptors.data(), descriptors.size(), 250);
     } while (poll_result < 0 && errno == EINTR);
     if (poll_result < 0) {
-      result.error = std::format("poll failed: {}", std::strerror(errno));
+      result.error = cachescope::format("poll failed: {}", std::strerror(errno));
       teardown_events(handles);
       reap_and_kill();
       return result;
@@ -387,7 +397,7 @@ PerfRecordResult PerfEventRecorder::record_binary(
       reaped = waitpid(pid, &child_status, WNOHANG);
     } while (reaped < 0 && errno == EINTR);
     if (reaped < 0) {
-      result.error = std::format("waitpid failed: {}", std::strerror(errno));
+      result.error = cachescope::format("waitpid failed: {}", std::strerror(errno));
       teardown_events(handles);
       reap_and_kill();
       return result;
@@ -402,7 +412,7 @@ PerfRecordResult PerfEventRecorder::record_binary(
   disable_events(handles);
   teardown_events(handles);
   if (verbose) {
-    std::cout << std::format("Collected {} samples via perf_event_open\n",
+    std::cout << cachescope::format("Collected {} samples via perf_event_open\n",
                              result.samples.size());
   }
   return result;
@@ -422,7 +432,7 @@ PerfRecordResult PerfEventRecorder::record_pid(
 
   ScopedFd pidfd(open_pidfd(pid));
   if (pidfd.get() < 0) {
-    result.error = std::format("pidfd_open failed for pid {}: {}", pid,
+    result.error = cachescope::format("pidfd_open failed for pid {}: {}", pid,
                                std::strerror(errno));
     return result;
   }
@@ -430,7 +440,7 @@ PerfRecordResult PerfEventRecorder::record_pid(
   ThreadEventMap handles_by_tid;
   const auto initial_tids = list_threads(pid);
   if (initial_tids.empty()) {
-    result.error = std::format("No threads found for pid {}", pid);
+    result.error = cachescope::format("No threads found for pid {}", pid);
     return result;
   }
   for (const pid_t tid : initial_tids) {
@@ -460,7 +470,7 @@ PerfRecordResult PerfEventRecorder::record_pid(
       poll_result = poll(descriptors.data(), descriptors.size(), 250);
     } while (poll_result < 0 && errno == EINTR);
     if (poll_result < 0) {
-      result.error = std::format("poll failed: {}", std::strerror(errno));
+      result.error = cachescope::format("poll failed: {}", std::strerror(errno));
       teardown_events(handles_by_tid);
       return result;
     }
@@ -504,7 +514,7 @@ PerfRecordResult PerfEventRecorder::record_pid(
   disable_events(handles_by_tid);
   teardown_events(handles_by_tid);
   if (verbose) {
-    std::cout << std::format("Collected {} samples via perf_event_open\n",
+    std::cout << cachescope::format("Collected {} samples via perf_event_open\n",
                              result.samples.size());
   }
   return result;

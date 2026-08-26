@@ -1,7 +1,7 @@
 #include "gui/ReportGUI.hpp"
 
 #include <cstdio>
-#include <format>
+#include "common/Format.hpp"
 #include <string>
 
 #include "report/JsonReport.hpp"
@@ -186,7 +186,7 @@ void render_false_sharing(const AnalysisResult& report) {
   }
 
   for (const auto& finding : report.false_sharing) {
-    const auto label = std::format(
+    const auto label = cachescope::format(
       "Finding #{}: {} (confidence {:.3f})", finding.index,
       finding.suspected_cause, finding.confidence);
     if (ImGui::TreeNode(label.c_str())) {
@@ -282,7 +282,7 @@ void render_thrashing(const AnalysisResult& report) {
   }
 
   for (const auto& finding : report.cache_thrashing) {
-    const auto label = std::format(
+    const auto label = cachescope::format(
       "Episode #{}: {} (confidence {:.3f})", finding.index,
       finding.suspected_cause, finding.confidence);
     if (ImGui::TreeNode(label.c_str())) {

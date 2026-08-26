@@ -27,7 +27,7 @@
 #include <chrono>
 #include <cstring>
 #include <filesystem>
-#include <format>
+#include "common/Format.hpp"
 #include <fstream>
 #include <iostream>
 #include <mutex>
@@ -61,18 +61,18 @@ bool apply_sysfs_field(const std::filesystem::path& path, uint64_t value,
                        perf_event_attr& attr, std::string& error) {
   std::ifstream file(path);
   if (!file) {
-    error = std::format("failed to open {}", path.string());
+    error = cachescope::format("failed to open {}", path.string());
     return false;
   }
   std::string spec;
   if (!std::getline(file, spec)) {
-    error = std::format("failed to read {}", path.string());
+    error = cachescope::format("failed to read {}", path.string());
     return false;
   }
   spec       = trim_copy(spec);
   auto colon = spec.find(':');
   if (colon == std::string::npos) {
-    error = std::format("invalid format spec '{}'", spec);
+    error = cachescope::format("invalid format spec '{}'", spec);
     return false;
   }
   auto reg        = trim_copy(spec.substr(0, colon));
@@ -81,7 +81,7 @@ bool apply_sysfs_field(const std::filesystem::path& path, uint64_t value,
   auto shift_spec = dash == std::string::npos ? bits : bits.substr(0, dash);
   uint64_t shift  = 0;
   if (!parse_u64(shift_spec, shift) || shift >= 64) {
-    error = std::format("invalid bit shift '{}'", shift_spec);
+    error = cachescope::format("invalid bit shift '{}'", shift_spec);
     return false;
   }
   const uint64_t shifted = value << shift;
@@ -92,7 +92,7 @@ bool apply_sysfs_field(const std::filesystem::path& path, uint64_t value,
   } else if (reg == "config2") {
     attr.config2 |= shifted;
   } else {
-    error = std::format("unsupported perf config field '{}'", reg);
+    error = cachescope::format("unsupported perf config field '{}'", reg);
     return false;
   }
   return true;
@@ -103,7 +103,7 @@ bool ensure_pfm_init(std::string& error) {
   static int init_status = PFM_SUCCESS;
   std::call_once(once, []() { init_status = pfm_initialize(); });
   if (init_status != PFM_SUCCESS) {
-    error = std::format("libpfm init failed: {}",
+    error = cachescope::format("libpfm init failed: {}",
                         std::string(pfm_strerror(init_status)));
     return false;
   }
@@ -146,11 +146,11 @@ bool encode_event(const std::string& event, perf_event_attr& attr,
     if (ret == PFM_ERR_NOTFOUND && event == "ibs_op") {
       std::string sysfs_error;
       if (encode_ibs_op_sysfs(attr, sysfs_error)) return true;
-      error = std::format("libpfm failed to encode '{}': {} ({})", event,
+      error = cachescope::format("libpfm failed to encode '{}': {} ({})", event,
                           std::string(pfm_strerror(ret)), sysfs_error);
       return false;
     }
-    error = std::format("libpfm failed to encode '{}': {}", event,
+    error = cachescope::format("libpfm failed to encode '{}': {}", event,
                         std::string(pfm_strerror(ret)));
     return false;
   }
@@ -228,7 +228,7 @@ bool setup_event(pid_t pid, const std::string& name, int sample_period, int cpu,
     fd                  = try_open();
   }
   if (fd == -1) {
-    error = std::format("perf_event_open failed for '{}': {}", name,
+    error = cachescope::format("perf_event_open failed for '{}': {}", name,
                         std::string(std::strerror(errno)));
     return false;
   }
@@ -238,7 +238,7 @@ bool setup_event(pid_t pid, const std::string& name, int sample_period, int cpu,
   void* mmap_base =
     mmap(nullptr, mmap_len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   if (mmap_base == MAP_FAILED) {
-    error = std::format("mmap failed for '{}': {}", name,
+    error = cachescope::format("mmap failed for '{}': {}", name,
                         std::string(std::strerror(errno)));
     close(fd);
     return false;
@@ -446,7 +446,7 @@ ProcMapInfo read_proc_maps(pid_t pid, const std::string& binary) {
     bin_path = binary;
   }
 
-  std::ifstream maps(std::format("/proc/{}/maps", pid));
+  std::ifstream maps(cachescope::format("/proc/{}/maps", pid));
   std::string line;
   while (std::getline(maps, line)) {
     if (line.find(bin_name) == std::string::npos &&

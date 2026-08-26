@@ -1,7 +1,7 @@
 #include "runtime/FalseSharingAnalysis.hpp"
 
 #include <algorithm>
-#include <format>
+#include "common/Format.hpp"
 #include <iostream>
 #include <ranges>
 #include <unordered_map>
@@ -160,7 +160,7 @@ void FalseSharingAnalysis::print(const std::vector<CacheLine>& hot_lines,
     const auto [min_addr, max_addr] = std::ranges::minmax(line.addrs);
     std::unordered_set<uint32_t> tids(line.tids.begin(), line.tids.end());
     std::unordered_set<int64_t> addresses(line.addrs.begin(), line.addrs.end());
-    std::cout << std::format(
+    std::cout << cachescope::format(
       "Cache Line #{}: 0x{:x}\n"
       "  Samples: {} (reads={}, writes={})\n"
       "  Threads: {}\n"

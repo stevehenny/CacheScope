@@ -2,7 +2,7 @@
 #include <libdwarf/libdwarf.h>
 
 #include <cstdint>
-#include <format>
+#include "common/Format.hpp"
 #include <string>
 #include <vector>
 
@@ -144,7 +144,7 @@ struct PerfSample {
   std::string dso;
 
   friend std::ostream& operator<<(std::ostream& os, const PerfSample& s) {
-    return os << std::format(
+    return os << cachescope::format(
              "TID: {}\nPID: {}\nCPU: {}\nIP: 0x{:x}\nADDR: 0x{:x}\nSP: "
              "0x{:x}\nPHYS_ADDR: 0x{:x}\nBP: 0x{:x}\n"
              "TIME: {}\nSYM: {}\nDSO: {}\n",
