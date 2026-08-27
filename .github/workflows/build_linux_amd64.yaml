@@ -27,7 +27,13 @@ jobs:
             rpm
 
       - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCACHESCOPE_BUILD_GUI=ON
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DCACHESCOPE_BUILD_GUI=ON
+          -DCACHESCOPE_BUILD_WORKLOADS=OFF
+          -DBUILD_TESTING=OFF
+          -DCACHESCOPE_ENABLE_PACKAGING=ON
 
       - name: Build
         run: cmake --build build -- -j$(nproc)
